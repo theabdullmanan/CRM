@@ -1,0 +1,159 @@
+rules_version = '2';
+
+// Role-based access for the Ops CRM + the original Agency Stats dashboard.
+// Roles: admin, manager, csm, ops, data (CJ), finance, developer, backend_developer,
+//        frontend_developer, designer, qa, sales, support, marketing, hr, pending
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helpers ----------
+    function signedIn() { return request.auth != null; }
+    function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function active() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && me().active == true; }
+    function role() { return me().role; }
+    function hasRole(roles) { return active() && role() in roles; }
+    function isAdmin() { return hasRole(['admin']); }
+    function leadership() { return hasRole(['admin', 'manager']); }
+    function onlyChanges(fields) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields); }
+
+    // ---------- original Agency Stats dashboard (unchanged) ----------
+    // The dashboard can only READ the stats document. Nobody can write from a browser.
+    // n8n writes with a service account, which skips these rules.
+    match /dashboard/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ---------- bootstrap: the very first account becomes admin ----------
+    match /meta/bootstrap {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.adminUid == request.auth.uid
+        && existsAfter(/databases/$(database)/documents/users/$(request.auth.uid));
+      allow update, delete: if false;
+    }
+
+    // ---------- users ----------
+    match /users/{uid} {
+      allow read: if active() || (signedIn() && request.auth.uid == uid);
+
+      // Admins create accounts for team members from the "Add user" page.
+      allow create: if isAdmin() || (signedIn() && request.auth.uid == uid && (
+        // normal sign-up: waits for admin approval
+        (request.resource.data.role == 'pending' && request.resource.data.active == false)
+        // first-ever account: becomes admin in the same batch that creates meta/bootstrap
+        || (request.resource.data.role == 'admin'
+            && !exists(/databases/$(database)/documents/meta/bootstrap)
+            && getAfter(/databases/$(database)/documents/meta/bootstrap).data.adminUid == request.auth.uid)
+      ));
+
+      allow update: if isAdmin()
+        || (signedIn() && request.auth.uid == uid && onlyChanges(['name', 'phone', 'title', 'lastSeenAt', 'mustChangePassword', 'passwordChangedAt']));
+      allow delete: if isAdmin();
+    }
+
+    // ---------- configuration ----------
+    match /settings/{doc} {
+      allow read: if active();
+      allow write: if isAdmin();
+    }
+    match /departments/{id} {
+      allow read: if active();
+      allow write: if isAdmin();
+    }
+
+    // ---------- clients & sub-accounts ----------
+    match /clients/{id} {
+      allow read: if active();
+      allow create, update: if hasRole(['admin', 'manager', 'csm']);
+      allow delete: if leadership();
+    }
+    match /subAccounts/{id} {
+      allow read: if active();
+      allow create, update: if hasRole(['admin', 'manager', 'csm']);
+      // Ops / CJ only touch the delivery counters when a data request is completed
+      allow update: if hasRole(['ops', 'data'])
+        && onlyChanges(['lastDeliveryAt', 'deliveredZipCount', 'deliveredContacts']);
+      allow delete: if leadership();
+    }
+
+    // ---------- zip code workflow ----------
+    match /zipSubmissions/{id} {
+      allow read: if active();
+      allow create: if hasRole(['admin', 'manager', 'csm', 'backend_developer'])
+        && request.resource.data.submittedBy == request.auth.uid;
+      allow update: if hasRole(['admin', 'manager', 'ops', 'data'])
+        // a CSM may dismiss their own flagged submission
+        || (hasRole(['csm']) && resource.data.submittedBy == request.auth.uid && onlyChanges(['status', 'dismissedAt']));
+      allow delete: if leadership()
+        || (hasRole(['csm']) && resource.data.submittedBy == request.auth.uid && resource.data.status == 'flagged');
+    }
+    // One doc per (scope, zip). Holds the cooldown expiry. Written inside transactions.
+    match /zipLocks/{id} {
+      allow read: if active();
+      allow write: if hasRole(['admin', 'manager', 'csm', 'ops', 'backend_developer']);
+    }
+
+    // ---------- CJ data requests ----------
+    match /dataRequests/{id} {
+      allow read: if active();
+      allow create: if hasRole(['admin', 'manager', 'ops']);
+      allow update: if hasRole(['admin', 'manager', 'ops', 'data']);
+      allow delete: if leadership();
+    }
+
+    // ---------- revenue ----------
+    // Revenue & client spend: admins only.
+    match /payments/{id} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ---------- tasks ----------
+    match /tasks/{id} {
+      allow read: if active();
+      allow create: if active() && request.resource.data.createdBy == request.auth.uid;
+      allow update: if leadership()
+        || (active() && (resource.data.assigneeId == request.auth.uid || resource.data.createdBy == request.auth.uid))
+        // shared (pool) tasks: anyone it was sent to can complete it, only in their own name
+        || (active()
+            && request.auth.uid in resource.data.get('assigneeIds', [])
+            && resource.data.status != 'done'
+            && request.resource.data.status == 'done'
+            && request.resource.data.completedBy == request.auth.uid
+            && onlyChanges(['status', 'completedAt', 'completedBy', 'completedByName', 'updatedAt']));
+      allow delete: if leadership() || (active() && resource.data.createdBy == request.auth.uid);
+    }
+
+    // ---------- uploaded CSV files for the zip workflow (stored in chunks) ----------
+    match /sheets/{id} {
+      allow read: if active();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
+      match /chunks/{chunk} {
+        allow read: if active();
+        allow write: if isAdmin();
+      }
+    }
+
+    // ---------- notifications ----------
+    match /notifications/{id} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if active();
+      allow update: if signedIn() && resource.data.userId == request.auth.uid && onlyChanges(['read']);
+      allow delete: if signedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // ---------- activity log ----------
+    match /activity/{id} {
+      allow read: if leadership();
+      allow create: if active() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // ---------- everything else stays locked (same as the original dashboard rules) ----------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

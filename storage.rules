@@ -1,0 +1,19 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function userData() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+    }
+    function active() { return request.auth != null && userData().active == true; }
+    function canUpload() { return active() && userData().role in ['admin', 'manager', 'ops', 'data']; }
+
+    // Contact sheets uploaded by CJ for a data request
+    match /contactSheets/{requestId}/{fileName} {
+      allow read: if active();
+      allow create: if canUpload()
+        && request.resource.size < 25 * 1024 * 1024;
+      allow delete: if canUpload();
+    }
+  }
+}

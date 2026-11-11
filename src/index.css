@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: 'cv11', 'ss01', 'ss03';
+  }
+  body { @apply bg-[#f7f7f8] text-slate-800; }
+  ::selection { background: rgb(61 110 242 / 0.18); }
+  :focus-visible { outline: none; }
+  .tabular-nums, .font-mono { font-variant-numeric: tabular-nums; }
+}
+
+@layer components {
+  /* Content settles in quickly with a short stagger. */
+  .page > *,
+  .page .grid > * {
+    animation: rise 0.42s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+  }
+  .page > *:nth-child(2) { animation-delay: 40ms; }
+  .page > *:nth-child(3) { animation-delay: 80ms; }
+  .page > *:nth-child(4) { animation-delay: 120ms; }
+  .page > *:nth-child(n + 5) { animation-delay: 160ms; }
+  .page .grid > *:nth-child(2) { animation-delay: 40ms; }
+  .page .grid > *:nth-child(3) { animation-delay: 80ms; }
+  .page .grid > *:nth-child(4) { animation-delay: 120ms; }
+  .page .grid > *:nth-child(n + 5) { animation-delay: 160ms; }
+
+  .skeleton {
+    @apply rounded-md bg-slate-200/60;
+    background-image: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.7), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 1.6s ease-in-out infinite;
+  }
+
+  .glass { @apply bg-white/85 backdrop-blur-md backdrop-saturate-150; }
+
+  /* Small uppercase label used above figures */
+  .eyebrow { @apply text-[11px] font-medium uppercase tracking-[0.08em] text-slate-500; }
+}
+
+@layer utilities {
+  .animate-fade { animation: fade 0.18s ease-out; }
+  .animate-pop { animation: pop 0.2s cubic-bezier(0.2, 0.7, 0.2, 1); }
+  .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: rgb(113 113 122 / 0.3); border-radius: 9999px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+}
+
+@keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes pop { from { opacity: 0; transform: translateY(6px) scale(0.98) } to { opacity: 1; transform: none } }
+@keyframes rise { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
+@keyframes shimmer { from { background-position: 200% 0 } to { background-position: -200% 0 } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Leaflet popups on the users map */
+.leaflet-container { font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+.leaflet-popup-content-wrapper { border-radius: 10px; box-shadow: 0 16px 48px -12px rgba(12,12,14,.28), 0 0 0 1px rgba(12,12,14,.06); }
+.leaflet-popup-content { margin: 12px 14px; font-size: 12.5px; line-height: 1.45; }
+.crm-pop-zip { font-family: "JetBrains Mono", monospace; font-size: 11px; color: #71717a; margin-bottom: 4px; }
+.crm-pop-acct { padding: 6px 0; border-bottom: 1px solid #f1f1f3; }
+.crm-pop-acct:last-child { border-bottom: 0; }
+.crm-pop-acct > a { font-weight: 600; color: #18181b; text-decoration: none; }
+.crm-pop-acct > a:hover { color: #2856e0; }
+.crm-pop-user b { display: block; font-weight: 500; color: #3f3f46; }
+.crm-pop-user a { color: #2856e0; text-decoration: none; }
+.crm-pop-user.muted { color: #a1a1aa; }
+.crm-pop-tag { display: inline-block; margin-top: 3px; font-size: 10.5px; font-weight: 500; color: #3f3f46; background: #f4f4f5; border-radius: 4px; padding: 1px 6px; }
