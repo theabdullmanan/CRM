@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import { AlertTriangle, Camera, ImagePlus, KeyRound, Loader2, Save, ShieldCheck, Trash2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { ROLES } from '../lib/constants';
-import { imageToAvatar } from '../lib/photos';
+import { PhotoCropper } from '../components/PhotoCropper';
 import { fmtDate, fmtDateTime, friendlyError } from '../lib/utils';
 import { changeMyPassword, updateMyPhoto, updateMyProfile } from '../services/userService';
 import { PasswordField } from '../components/PasswordField';
@@ -33,11 +33,18 @@ export default function Account() {
     try {
       await updateMyPhoto(profile.id, photo);
       toast.success(photo ? 'Photo updated' : 'Photo removed');
-    } catch (err) { toast.error(friendlyError(err)); } finally { setSavingPhoto(false); }
+      return true;
+    } catch (err) { toast.error(friendlyError(err)); return false; } finally { setSavingPhoto(false); }
   };
-  const pickPhoto = async (file) => {
+  // Picking a file opens the cropper; the photo is saved from there.
+  const [cropFile, setCropFile] = useState(null);
+  const pickPhoto = (file) => {
     if (!file) return;
-    try { await savePhoto(await imageToAvatar(file)); } catch (err) { toast.error(err.message); }
+    if (!file.type?.startsWith('image/')) return toast.error('Please choose an image file.');
+    setCropFile(file);
+  };
+  const saveCropped = async (dataUrl) => {
+    if (await savePhoto(dataUrl)) setCropFile(null);
   };
 
   const mismatch = pw.confirm && pw.next !== pw.confirm;
@@ -141,6 +148,8 @@ export default function Account() {
           </Card>
         </div>
       </div>
+
+      <PhotoCropper file={cropFile} saving={savingPhoto} onCancel={() => setCropFile(null)} onSave={saveCropped} />
     </>
   );
 }
