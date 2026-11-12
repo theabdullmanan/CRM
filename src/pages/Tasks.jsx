@@ -210,7 +210,8 @@ export default function Tasks() {
   const [params, setParams] = useSearchParams();
   const leadership = can('teamProgress');
   const workflow = can('workflow');
-  const view = params.get('view') || (role === 'backend_developer' ? 'workflow' : 'mine');
+  // Opens on the Zip workflow board for everyone who has it; others start on "Assigned to me".
+  const view = params.get('view') || (workflow ? 'workflow' : 'mine');
   const [status, setStatus] = useState('open');
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState({ open: false, task: null });
