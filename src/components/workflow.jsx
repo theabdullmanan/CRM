@@ -248,6 +248,8 @@ export function WorkflowBoard({ compact = false }) {
     );
   }
   const mineWaiting = jobs.filter((j) => j.base.requestedBy === me && !j.process);
+  // Most recently completed shared task, shown in place of the empty "Available" list.
+  const lastDone = finished[0];
 
   return (
     <Card>
@@ -255,7 +257,13 @@ export function WorkflowBoard({ compact = false }) {
         actions={compact && <Link to="/tasks?view=workflow" className="text-[13px] font-medium text-slate-600 hover:text-slate-900">Open</Link>} />
       <div className="space-y-6 p-5">
         <Section title="Available" count={available.length}
-          empty={!available.length && <EmptyState icon={Inbox} title="No task available" message="When an admin uploads a contact sheet, it appears here for every Backend Developer." />}>
+          empty={!available.length && (lastDone ? (
+            <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-4">
+              <JobHeader t={lastDone.process} />
+              <CompletedRibbon task={lastDone.process} me={me} />
+              {lastDone.process.completedBy === me && <p className="flex items-center gap-1.5 pt-1 text-[13px] font-medium text-slate-500"><Inbox className="h-4 w-4" />No task available now.</p>}
+            </div>
+          ) : <EmptyState icon={Inbox} title="No task available" message="When an admin uploads a contact sheet, it appears here for every Backend Developer." />)}>
           {available.slice(0, limit).map((j) => (
             <JobCard key={j.jobId} job={j}>
               <div className="flex flex-wrap items-start justify-between gap-3">
