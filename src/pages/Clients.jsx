@@ -1,114 +1,135 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Plus, Users, Download, Layers } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
-import { useClients, usePayments, useSubAccounts } from '../hooks/useData';
-import { computeSpend } from '../lib/spend';
-import { CLIENT_STATUS } from '../lib/constants';
-import { downloadCsv, money, fmtDate } from '../lib/utils';
-import { Avatar, Badge, Button, Card, EmptyState, PageHeader, PageLoader, SearchInput, Select, StatusBadge, Table, Td, Th } from '../components/ui';
-import { ClientFormModal } from '../components/forms';
+import { Download, Mail, Phone, Users } from 'lucide-react';
+import { useAgency } from '../hooks/useAgency';
+import { cn, downloadCsv } from '../lib/utils';
+import { Avatar, Badge, Button, Card, EmptyState, PageHeader, PageLoader, SearchInput, Select, Table, Td, Th } from '../components/ui';
+import { LiveStatus, SheetPill, SubAccountDrawer } from '../components/agency';
 
+const PAGE = 100;
+const uniq = (list) => [...new Set(list.filter(Boolean))].sort((a, b) => a.localeCompare(b));
+
+/**
+ * Clients = the people on your GoHighLevel sub-accounts (live from n8n),
+ * not clients typed in by hand. Click anyone to open their sub-account.
+ */
 export default function Clients() {
-  const { can, profile } = useAuth();
-  const navigate = useNavigate();
-  const { data: clients, loading } = useClients();
-  const { data: subs } = useSubAccounts();
-  const { data: payments } = usePayments();
+  const agency = useAgency();
+  const { rows, owners } = agency;
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
-  const [mine, setMine] = useState(profile.role === 'csm');
-  const [showForm, setShowForm] = useState(false);
+  const [csm, setCsm] = useState('');
+  const [shown, setShown] = useState(PAGE);
+  const [selected, setSelected] = useState(null); // user key
 
-  const spendByClient = useMemo(() => {
-    const { clients: list } = computeSpend(payments);
-    return Object.fromEntries(list.map((c) => [c.clientId, c]));
-  }, [payments]);
+  // One entry per user per sub-account.
+  const people = useMemo(() => rows.flatMap((r) => r.users.map((u, i) => ({
+    ...u,
+    key: `${r.locationId}:${u.id || u.email || i}`,
+    sub: r,
+    search: [u.name, u.email, u.phone, r.name, r.csm, r.city, r.state].join(' ').toLowerCase(),
+  }))).sort((a, b) => (a.name || '').localeCompare(b.name || '')), [rows]);
 
-  const subCount = useMemo(() => subs.reduce((m, s) => ({ ...m, [s.clientId]: (m[s.clientId] || 0) + 1 }), {}), [subs]);
+  const csms = useMemo(() => uniq(rows.map((r) => r.csm)), [rows]);
 
-  const rows = clients.filter((c) => {
-    if (status !== 'all' && c.status !== status) return false;
-    if (mine && c.csmId !== profile.id) return false;
-    const q = search.toLowerCase();
-    return !q || [c.name, c.contactName, c.email, c.csmName].some((v) => v?.toLowerCase().includes(q));
-  });
+  const list = useMemo(() => {
+    const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return people.filter((p) => {
+      if (status === 'active' && !p.sub.isActive) return false;
+      if (status === 'inactive' && p.sub.isActive) return false;
+      if (csm && p.sub.csm !== csm) return false;
+      return words.every((w) => p.search.includes(w));
+    });
+  }, [people, search, status, csm]);
 
-  const showSpend = can('revenue');
+  const current = people.find((p) => p.key === selected);
+
+  if (agency.status === 'idle' || agency.status === 'loading') return <PageLoader />;
+  if (agency.status !== 'ready') {
+    return (
+      <>
+        <PageHeader title="Clients" subtitle="Users of your GoHighLevel sub-accounts." actions={<LiveStatus agency={agency} />} />
+        <Card><EmptyState icon={Users} title="GHL data isn't available" message={agency.error || 'Try Refresh in a moment.'} /></Card>
+      </>
+    );
+  }
 
   return (
     <>
       <PageHeader
         title="Clients"
-        subtitle={`${clients.length} clients · ${subs.length} sub-accounts`}
-        actions={
+        subtitle={`${people.length.toLocaleString()} users across ${rows.length.toLocaleString()} GoHighLevel sub-accounts`}
+        actions={(
           <>
-            <Button variant="secondary" icon={Download} onClick={() => downloadCsv('clients.csv', rows.map((c) => ({
-              name: c.name, status: c.status, contact: c.contactName, email: c.email, csm: c.csmName,
-              dailyRate: c.dailyRate, subAccounts: subCount[c.id] || 0,
-              ...(showSpend ? { spend30d: spendByClient[c.id]?.d30 || 0, lifetime: spendByClient[c.id]?.lifetime || 0 } : {}),
+            <LiveStatus agency={agency} />
+            <Button variant="secondary" icon={Download} onClick={() => downloadCsv('ghl-users.csv', list.map((p) => ({
+              name: p.name || '', email: p.email || '', phone: p.phone || '',
+              subAccount: p.sub.name, locationId: p.sub.locationId, csm: p.sub.csm || '',
+              city: p.sub.city || '', state: p.sub.state || '', status: p.sub.isActive ? 'Active' : 'Inactive',
             })))}>Export</Button>
-            {can('clientsEdit') && <Button icon={Plus} onClick={() => setShowForm(true)}>New client</Button>}
           </>
-        }
+        )}
       />
 
       <Card>
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 p-4">
-          <SearchInput value={search} onChange={setSearch} placeholder="Search clients, contacts, CSM…" />
-          <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-auto">
-            <option value="all">All statuses</option>
-            {Object.entries(CLIENT_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          <SearchInput value={search} onChange={(v) => { setSearch(v); setShown(PAGE); }} placeholder="Search name, email, phone, sub-account, CSM…" />
+          <Select value={status} onChange={(e) => { setStatus(e.target.value); setShown(PAGE); }} className="w-auto">
+            <option value="all">All sub-accounts</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
           </Select>
-          <label className="flex items-center gap-2 text-sm text-slate-600">
-            <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} className="h-4 w-4 rounded border-slate-300 text-brand-600" />
-            Only my clients
-          </label>
+          <Select value={csm} onChange={(e) => { setCsm(e.target.value); setShown(PAGE); }} className="w-auto">
+            <option value="">All CSMs</option>
+            {csms.map((c) => <option key={c} value={c}>{c}</option>)}
+          </Select>
+          <span className="ml-auto text-xs text-slate-500">{list.length.toLocaleString()} shown</span>
         </div>
 
-        {loading ? <PageLoader /> : rows.length === 0 ? (
-          <EmptyState icon={Users} title="No clients found" message={clients.length ? 'Try a different filter.' : 'Add your first client to get started.'}
-            action={can('clientsEdit') && !clients.length && <Button icon={Plus} onClick={() => setShowForm(true)}>New client</Button>} />
+        {list.length === 0 ? (
+          <EmptyState icon={Users} title="No users found" message={people.length ? 'Try a different search or filter.' : 'Your GHL sub-accounts have no users yet.'} />
         ) : (
-          <Table>
-            <thead>
-              <tr>
-                <Th>Client</Th><Th>Status</Th><Th>CSM</Th><Th>Sub-accounts</Th><Th className="text-right">Daily rate</Th>
-                {showSpend && <><Th className="text-right">30-day spend</Th><Th className="text-right">Lifetime</Th></>}
-                <Th>Since</Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {rows.map((c) => (
-                <tr key={c.id} onClick={() => navigate(`/clients/${c.id}`)} className="cursor-pointer hover:bg-slate-50">
-                  <Td>
-                    <div className="flex items-center gap-3">
-                      <Avatar name={c.name} size="sm" />
-                      <div>
-                        <p className="font-medium text-slate-900">{c.name}</p>
-                        <p className="text-xs text-slate-500">{c.contactName || c.email || '—'}</p>
+          <>
+            <Table>
+              <thead>
+                <tr><Th>User</Th><Th>Phone</Th><Th>Sub-account</Th><Th>CSM</Th><Th>Status</Th><Th>Sheet</Th></tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {list.slice(0, shown).map((p) => (
+                  <tr key={p.key} onClick={() => setSelected(p.key)}
+                    className={cn('cursor-pointer hover:bg-slate-50', selected === p.key && 'bg-slate-50')}>
+                    <Td>
+                      <div className="flex items-center gap-3">
+                        <Avatar name={p.name || p.email} size="sm" />
+                        <div className="min-w-0">
+                          <p className="max-w-[240px] truncate font-medium text-slate-900">{p.name || '—'}</p>
+                          <p className="flex max-w-[240px] items-center gap-1 truncate text-xs text-slate-500"><Mail className="h-3 w-3 shrink-0" />{p.email || '—'}</p>
+                        </div>
                       </div>
-                    </div>
-                  </Td>
-                  <Td><StatusBadge map={CLIENT_STATUS} value={c.status} /></Td>
-                  <Td>{c.csmName || <span className="text-slate-400">Unassigned</span>}</Td>
-                  <Td><Badge color="indigo"><Layers className="h-3 w-3" />{subCount[c.id] || 0}</Badge></Td>
-                  <Td className="text-right tabular-nums">{c.dailyRate ? money(c.dailyRate) : '—'}</Td>
-                  {showSpend && (
-                    <>
-                      <Td className="text-right font-medium tabular-nums">{money(spendByClient[c.id]?.d30)}</Td>
-                      <Td className="text-right tabular-nums">{money(spendByClient[c.id]?.lifetime)}</Td>
-                    </>
-                  )}
-                  <Td className="text-slate-500">{fmtDate(c.createdAt)}</Td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
+                    </Td>
+                    <Td className="whitespace-nowrap text-slate-600">{p.phone ? <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{p.phone}</span> : '—'}</Td>
+                    <Td>
+                      <p className="max-w-[260px] truncate text-slate-800" title={p.sub.name}>{p.sub.name}</p>
+                      <p className="text-xs text-slate-500">{[p.sub.city, p.sub.state].filter(Boolean).join(', ') || '—'}</p>
+                    </Td>
+                    <Td className="text-slate-600">{p.sub.csm || <span className="text-slate-400">—</span>}</Td>
+                    <Td>{p.sub.isActive ? <Badge color="emerald" dot>Active</Badge> : <Badge color="red" dot>Inactive</Badge>}</Td>
+                    <Td><SheetPill status={p.sub.sheetStatus} /></Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+            {list.length > shown && (
+              <div className="flex justify-center border-t border-slate-100 p-4">
+                <Button variant="secondary" size="sm" onClick={() => setShown((n) => n + PAGE)}>
+                  Show more ({(list.length - shown).toLocaleString()} left)
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </Card>
 
-      <ClientFormModal open={showForm} onClose={() => setShowForm(false)} onSaved={(id) => navigate(`/clients/${id}`)} />
+      <SubAccountDrawer row={current?.sub} owners={owners} onClose={() => setSelected(null)} />
     </>
   );
 }
