@@ -166,7 +166,7 @@ function Sidebar({ onNavigate, counts, pillId }) {
 
 export default function Layout() {
   const { data: users } = useUsers();
-  const photos = useMemo(() => new Map(users.filter((u) => u.photoURL).map((u) => [u.id, u.photoURL])), [users]);
+  const photos = useMemo(() => Object.fromEntries(users.filter((u) => u.photoURL).map((u) => [u.id, u.photoURL])), [users]);
   return <PhotoContext.Provider value={photos}><LayoutInner /></PhotoContext.Provider>;
 }
 

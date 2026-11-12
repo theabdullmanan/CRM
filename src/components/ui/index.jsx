@@ -335,7 +335,7 @@ export function MiniSpark({ data, width = 92, height = 32, className }) {
 const avatarTones = ['bg-slate-800', 'bg-[#2f4a6d]', 'bg-[#3d5a4c]', 'bg-[#5b4636]', 'bg-[#4b3f63]', 'bg-[#5c3a44]'];
 export function Avatar({ name, size = 'md', userId, src }) {
   const photos = useContext(PhotoContext);
-  const photo = src || (userId ? photos.get(userId) : null);
+  const photo = src || (userId ? photos[userId] : null);
   const tone = avatarTones[(name || '').split('').reduce((s, c) => s + c.charCodeAt(0), 0) % avatarTones.length];
   const dim = { sm: 'h-7 w-7 text-[10.5px]', md: 'h-8 w-8 text-xs', lg: 'h-12 w-12 text-base', xl: 'h-24 w-24 text-2xl' }[size];
   if (photo) return <img src={photo} alt={name || ''} className={cn('shrink-0 rounded-full object-cover ring-1 ring-black/5', dim)} />;

@@ -1,7 +1,7 @@
 import { createContext } from 'react';
 
 /** userId → photo (data URL). Filled once in Layout so every Avatar can show a person's picture. */
-export const PhotoContext = createContext(new Map());
+export const PhotoContext = createContext({});
 
 const SIZE = 256; // px, square
 
