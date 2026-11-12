@@ -20,7 +20,7 @@ import { logActivity, notifyUsers } from './notifications';
 
 export const WORKFLOW_KIND = 'zip_workflow';
 /** Roles whose zip submissions start the workflow. */
-export const WORKFLOW_SUBMITTERS = ['backend_developer'];
+export const WORKFLOW_SUBMITTERS = ['admin', 'manager', 'csm', 'backend_developer'];
 export const DEV_ROLE = 'backend_developer';
 
 const CHUNK = 700_000; // characters per Firestore chunk (doc limit is 1 MiB)

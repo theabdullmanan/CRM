@@ -40,7 +40,7 @@ export const ACCESS = {
   clientsEdit: ['admin', 'manager', 'csm'],
   zipSubmit: ['admin', 'manager', 'csm', 'backend_developer'],
   // Zip → contact-sheet workflow (shared tasks)
-  workflow: ['admin', 'backend_developer'],
+  workflow: ['admin', 'manager', 'csm', 'backend_developer'],
   zipQueue: ['admin', 'manager', 'ops'],
   zipOverride: ['admin', 'manager'],
   dataRequests: ['admin', 'manager', 'ops', 'data'],

@@ -161,7 +161,7 @@ function Section({ title, count, children, empty }) {
  * Backend Developers: pick up available tasks; finished ones show who completed them.
  */
 export function WorkflowBoard({ compact = false }) {
-  const { profile, isAdmin } = useAuth();
+  const { profile, isAdmin, role } = useAuth();
   const { data, loading } = useWorkflowTasks();
   const jobs = groupJobs(data);
   const me = profile?.id;
@@ -221,6 +221,32 @@ export function WorkflowBoard({ compact = false }) {
   // Backend Developer (or anyone the shared tasks are assigned to)
   const available = jobs.filter((j) => j.process && j.process.status !== 'done' && j.process.assigneeIds?.includes(me));
   const finished = jobs.filter((j) => j.process?.status === 'done' && j.process.assigneeIds?.includes(me));
+  // Runs I started that I'm not working on myself (e.g. a Manager's submissions).
+  const mySubs = jobs.filter((j) => j.base.requestedBy === me && !j.process?.assigneeIds?.includes(me));
+  const isDev = role === 'backend_developer' || available.length > 0 || finished.length > 0;
+
+  if (!isDev) {
+    return (
+      <Card>
+        <CardHeader title="My zip submissions" subtitle="Your zips go to the admins, who upload the CSV; then the first Backend Developer to finish completes it."
+          actions={compact ? <Link to="/tasks?view=workflow" className="text-[13px] font-medium text-slate-600 hover:text-slate-900">Open</Link> : <Link to="/zip-codes"><Button size="sm" icon={MapPin}>Submit zip codes</Button></Link>} />
+        <div className="space-y-3 p-5">
+          {mySubs.length === 0 ? (
+            <EmptyState icon={MapPin} title="No submissions yet" message="Submit zip codes and you can follow each one here: CSV uploaded, then completed." action={compact && <Link to="/zip-codes"><Button size="sm" icon={MapPin}>Submit zip codes</Button></Link>} />
+          ) : (
+            <AnimatePresence initial={false}>
+              {mySubs.slice(0, limit).map((j) => (
+                <JobCard key={j.jobId} job={j}>
+                  <JobHeader t={j.process || j.base} />
+                  {j.process?.status === 'done' && <CompletedRibbon task={j.process} me={me} />}
+                </JobCard>
+              ))}
+            </AnimatePresence>
+          )}
+        </div>
+      </Card>
+    );
+  }
   const mineWaiting = jobs.filter((j) => j.base.requestedBy === me && !j.process);
 
   return (

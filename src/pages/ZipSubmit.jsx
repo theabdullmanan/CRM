@@ -14,6 +14,7 @@ import {
 } from '../components/ui';
 import { useAgency } from '../hooks/useAgency';
 import { startZipWorkflow } from '../services/workflowService';
+import { GhlPicker } from '../components/GhlPicker';
 
 function useCooldownPrecheck(zips, scopeKey) {
   const [locks, setLocks] = useState({});
@@ -50,6 +51,9 @@ export default function ZipSubmit() {
   const { data: clients } = useClients();
   const [clientId, setClientId] = useState(params.get('client') || '');
   const [subId, setSubId] = useState('');
+  // Where the sub-account comes from: live GoHighLevel data (n8n) or CRM clients.
+  const [source, setSource] = useState(params.get('client') ? 'crm' : 'ghl');
+  const [ghlId, setGhlId] = useState('');
   const { data: subs } = useSubAccounts(clientId || null);
   const [text, setText] = useState('');
   const [note, setNote] = useState('');
@@ -64,24 +68,29 @@ export default function ZipSubmit() {
 
   useEffect(() => { if (subs.length === 1) setSubId(subs[0].id); }, [subs]);
 
-  const client = clients.find((c) => c.id === clientId);
-  const subAccount = subs.find((s) => s.id === subId);
+  // Second check: zips already live in a GoHighLevel sub-account (from n8n's live data).
+  const agency = useAgency();
+  const ghlRow = source === 'ghl' ? agency.rows.find((r) => r.locationId === ghlId) : null;
+  const client = source === 'ghl'
+    ? (ghlRow ? { id: `ghl_${ghlRow.locationId}`, name: ghlRow.name } : null)
+    : clients.find((c) => c.id === clientId);
+  const subAccount = source === 'ghl'
+    ? (ghlRow ? { id: ghlRow.locationId, name: [ghlRow.city, ghlRow.state].filter(Boolean).join(', ') || 'GoHighLevel' } : null)
+    : subs.find((s) => s.id === subId);
   const parsed = useMemo(() => parseZipList(text), [text]);
   const scopeKey = client && subAccount ? scopeKeyFor(settings.cooldownScope, { clientId: client.id, subAccountId: subAccount.id }) : null;
   const { locks, checking } = useCooldownPrecheck(parsed.valid, scopeKey);
   const blocked = parsed.valid.filter((z) => locks[z]);
-  // Second check: zips already live in a GoHighLevel sub-account (from n8n's live data).
-  const agency = useAgency();
   const inGhl = parsed.valid.filter((z) => !locks[z] && agency.owners?.[z]?.length);
 
   const submit = async () => {
-    if (!client || !subAccount) return toast.error('Choose a client and sub-account first');
+    if (!client || !subAccount) return toast.error(source === 'ghl' ? 'Choose a sub-account first' : 'Choose a client and sub-account first');
     if (!parsed.valid.length) return toast.error('Enter at least one valid zip code');
     setBusy(true);
     try {
       const res = await submitZips({ zips: parsed.valid, client, subAccount, profile, settings, note });
       setResults(res);
-      // Backend Developers' accepted zips go to the admins as a task to upload the contact sheet.
+      // Accepted zips go to the admins as a task to upload the contact sheet.
       try {
         if (await startZipWorkflow({ results: res, client, subAccount, profile })) toast.success('Sent to the admins: they will upload the contact sheet.');
       } catch (err) { toast.error(`Zips saved, but the admin task couldn't be created: ${friendlyError(err)}`); }
@@ -116,13 +125,23 @@ export default function ZipSubmit() {
     <>
       <PageHeader
         title="Submit zip codes"
-        subtitle={`Every zip is checked against the ${settings.cooldownDays}-day cooldown before it reaches Ops.`}
+        subtitle={`Every zip is checked against the ${settings.cooldownDays}-day cooldown, then goes to the admins to upload the contact sheet.`}
       />
 
       <div className="grid gap-6 xl:grid-cols-5">
         <Card className="xl:col-span-2">
           <CardHeader title="New submission" subtitle="Paste zips separated by commas, spaces or new lines." />
           <div className="space-y-4 p-5">
+            <Tabs size="sm" value={source} onChange={(v) => { setSource(v); setGhlId(''); setClientId(''); setSubId(''); }} tabs={[
+              { value: 'ghl', label: `GoHighLevel${agency.rows.length ? ` · ${agency.rows.length}` : ''}` },
+              { value: 'crm', label: `CRM clients${clients.length ? ` · ${clients.length}` : ''}` },
+            ]} />
+            {source === 'ghl' ? (
+              <Field label="Sub-account" hint={agency.status === 'ready' ? 'Live from n8n. Type to search.' : agency.status === 'loading' || agency.status === 'idle' ? 'Loading live sub-accounts…' : agency.error}>
+                <GhlPicker rows={agency.rows} value={ghlId} onChange={setGhlId} disabled={agency.status !== 'ready'} />
+              </Field>
+            ) : (<>
+            {!clients.length && <p className="rounded-md border border-dashed border-slate-200 px-3 py-3 text-xs text-slate-500">No CRM clients yet. Use the GoHighLevel tab, or add clients on the Clients page.</p>}
             <Field label="Client">
               <Select value={clientId} onChange={(e) => { setClientId(e.target.value); setSubId(''); }}>
                 <option value="">Select client…</option>
@@ -135,6 +154,7 @@ export default function ZipSubmit() {
                 {subs.map((s) => <option key={s.id} value={s.id}>{s.name}{s.accountRef ? ` (${s.accountRef})` : ''}</option>)}
               </Select>
             </Field>
+            </>)}
             <Field label="Zip codes">
               <Textarea rows={6} value={text} onChange={(e) => setText(e.target.value)} placeholder={'85001, 85003\n85004 85006'} className="font-mono" />
             </Field>
@@ -168,7 +188,7 @@ export default function ZipSubmit() {
               </div>
             )}
 
-            <Field label="Note for Ops (optional)"><Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+            <Field label="Note (optional)"><Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
 
             <Button className="w-full" size="lg" icon={Send} loading={busy} onClick={submit} disabled={!parsed.valid.length || !subAccount}>
               Submit {parsed.valid.length ? `${parsed.valid.length} zip${parsed.valid.length > 1 ? 's' : ''}` : ''}

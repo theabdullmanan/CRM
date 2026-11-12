@@ -250,7 +250,7 @@ export default function Tasks() {
 
       <div className="mb-4">
         <Tabs value={view} onChange={(v) => setParams({ view: v })} tabs={[
-          ...(workflow ? [{ value: 'workflow', label: 'Shared tasks' }] : []),
+          ...(workflow ? [{ value: 'workflow', label: role === 'backend_developer' ? 'Shared tasks' : 'Zip workflow' }] : []),
           { value: 'mine', label: 'Assigned to me' },
           { value: 'created', label: 'Created by me' },
           ...(leadership ? [{ value: 'all', label: 'All tasks' }, { value: 'team', label: 'Team progress' }] : []),
