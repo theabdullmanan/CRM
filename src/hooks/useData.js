@@ -1,5 +1,5 @@
 // Shared, named subscriptions used across pages.
-import { collection, orderBy, query, where, limit } from 'firebase/firestore';
+import { collection, orderBy, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { previewDb as P } from '../lib/preview';
 import { useCollection } from './useFirestore';
@@ -92,11 +92,17 @@ export function useTasks(scope) {
 
 export function useNotifications(max = 50) {
   const { user } = useAuth();
-  return useCollection(
-    () => (user ? query(collection(db, 'notifications'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'), limit(max)) : null),
-    [user?.uid, max],
-    () => P.notifications.slice(0, max),
+  // Filter only by userId and sort here, so this query never depends on a composite index
+  // being deployed (a missing index made notifications flash and then disappear).
+  const res = useCollection(
+    () => (user ? query(collection(db, 'notifications'), where('userId', '==', user.uid)) : null),
+    [user?.uid],
+    () => P.notifications,
   );
+  const sorted = [...res.data]
+    .sort((a, b) => (b.createdAt?.seconds ?? 9e15) - (a.createdAt?.seconds ?? 9e15))
+    .slice(0, max);
+  return { ...res, data: sorted };
 }
 
 /**

@@ -28,7 +28,8 @@ export function useCollection(buildQuery, deps = [], preview) {
       (snap) => setState({ data: snap.docs.map((d) => ({ id: d.id, ...d.data() })), loading: false, error: null }),
       (error) => {
         console.error('[useCollection]', error);
-        setState({ data: [], loading: false, error });
+        // Keep what's already on screen; wiping it made cached rows flash and then vanish.
+        setState((s) => ({ ...s, loading: false, error }));
       },
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
