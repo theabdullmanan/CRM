@@ -250,10 +250,12 @@ export default function Tasks() {
 
       <div className="mb-4">
         <Tabs value={view} onChange={(v) => setParams({ view: v })} tabs={[
-          ...(workflow ? [{ value: 'workflow', label: role === 'backend_developer' ? 'Shared tasks' : 'Zip workflow' }] : []),
+          // Backend Developers work from the shared board, so it stays first for them.
+          ...(workflow && role === 'backend_developer' ? [{ value: 'workflow', label: 'Shared tasks' }] : []),
           { value: 'mine', label: 'Assigned to me' },
           { value: 'created', label: 'Created by me' },
           ...(leadership ? [{ value: 'all', label: 'All tasks' }, { value: 'team', label: 'Team progress' }] : []),
+          ...(workflow && role !== 'backend_developer' ? [{ value: 'workflow', label: 'Zip workflow' }] : []),
         ]} />
       </div>
 
