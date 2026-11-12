@@ -43,7 +43,6 @@ export const ACCESS = {
   workflow: ['admin', 'manager', 'csm', 'backend_developer'],
   zipQueue: ['admin', 'manager', 'ops'],
   zipOverride: ['admin', 'manager'],
-  dataRequests: ['admin', 'manager', 'ops', 'data'],
   revenue: ['admin'], // Revenue & client spend is admin-only
   map: ['admin', 'manager', 'csm', 'ops', 'data', 'finance', 'sales', 'support', 'marketing'],
   agency: ['admin', 'manager', 'csm', 'ops', 'data', 'sales', 'support'],

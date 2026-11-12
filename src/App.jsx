@@ -12,7 +12,6 @@ const Clients = lazy(() => import('./pages/Clients'));
 const ClientDetail = lazy(() => import('./pages/ClientDetail'));
 const ZipSubmit = lazy(() => import('./pages/ZipSubmit'));
 const ZipQueue = lazy(() => import('./pages/ZipQueue'));
-const DataRequests = lazy(() => import('./pages/DataRequests'));
 const Revenue = lazy(() => import('./pages/Revenue'));
 const MapDashboard = lazy(() => import('./pages/MapDashboard'));
 const SubAccounts = lazy(() => import('./pages/SubAccounts'));
@@ -66,7 +65,6 @@ export default function App() {
                 <Route path="zip-lookup" element={<Guard area="agency"><ZipLookup /></Guard>} />
                 <Route path="zip-codes" element={<Guard area="zipSubmit"><ZipSubmit /></Guard>} />
                 <Route path="zip-queue" element={<Guard area="zipQueue"><ZipQueue /></Guard>} />
-                <Route path="data-requests" element={<Guard area="dataRequests"><DataRequests /></Guard>} />
                 <Route path="revenue" element={<Guard area="revenue"><Revenue /></Guard>} />
                 <Route path="map" element={<Guard area="map"><MapDashboard /></Guard>} />
                 <Route path="tasks" element={<Guard area="tasks"><Tasks /></Guard>} />

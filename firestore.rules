@@ -48,7 +48,7 @@ service cloud.firestore {
       ));
 
       allow update: if isAdmin()
-        || (signedIn() && request.auth.uid == uid && onlyChanges(['name', 'phone', 'title', 'lastSeenAt', 'mustChangePassword', 'passwordChangedAt']));
+        || (signedIn() && request.auth.uid == uid && onlyChanges(['name', 'phone', 'title', 'photoURL', 'lastSeenAt', 'mustChangePassword', 'passwordChangedAt']));
       allow delete: if isAdmin();
     }
 

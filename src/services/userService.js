@@ -71,6 +71,12 @@ export async function updateMyProfile(uid, { name, phone }) {
   if (auth.currentUser) await updateProfile(auth.currentUser, { displayName: name.trim() }).catch(() => {});
 }
 
+/** Saves (or with null, removes) the signed-in user's profile photo, a small data URL. */
+export async function updateMyPhoto(uid, photoURL) {
+  if (!db) throw new Error('Preview mode — connect Firebase to save changes.');
+  await updateDoc(doc(db, 'users', uid), { photoURL: photoURL || null });
+}
+
 /** Strong random password: letters, digits and a symbol, no look-alike characters. */
 export function generatePassword(length = 12) {
   const sets = ['ABCDEFGHJKLMNPQRSTUVWXYZ', 'abcdefghijkmnpqrstuvwxyz', '23456789', '!@#$%&*?'];

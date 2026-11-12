@@ -1,14 +1,15 @@
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { collection, query, where } from 'firebase/firestore';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  LayoutDashboard, Users, MapPin, ClipboardCheck, Database, DollarSign, Map, CheckSquare,
+  LayoutDashboard, Users, MapPin, ClipboardCheck, DollarSign, Map, CheckSquare,
   UserCog, Settings, LogOut, Menu, X, Bell, Search, ChevronRight, Building2, SearchCheck, UserPlus, CircleUser, KeyRound,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCollection } from '../../hooks/useFirestore';
-import { useTasks, useWorkflowTasks } from '../../hooks/useData';
+import { useTasks, useUsers, useWorkflowTasks } from '../../hooks/useData';
+import { PhotoContext } from '../../lib/photos';
 import { db } from '../../lib/firebase';
 import { isPreview, previewDb as P } from '../../lib/preview';
 import { ASSIGNABLE_ROLES, ROLES } from '../../lib/constants';
@@ -27,7 +28,6 @@ export const NAV = [
   { to: '/zip-lookup', label: 'Zip lookup', icon: SearchCheck, area: 'agency' },
   { to: '/zip-codes', label: 'Submit zip codes', icon: MapPin, area: 'zipSubmit', countKey: 'flagged' },
   { to: '/zip-queue', label: 'Ops review queue', icon: ClipboardCheck, area: 'zipQueue', countKey: 'pending' },
-  { to: '/data-requests', label: 'CJ data requests', icon: Database, area: 'dataRequests', countKey: 'open' },
   { section: 'Insights' },
   { to: '/revenue', label: 'Revenue & spend', icon: DollarSign, area: 'revenue' },
   { to: '/map', label: 'Users map', icon: Map, area: 'map' },
@@ -46,11 +46,6 @@ function useNavCounts() {
     () => (can('zipQueue') ? query(collection(db, 'zipSubmissions'), where('status', 'in', ['pending', 'approved'])) : null),
     [can('zipQueue')],
     () => (can('zipQueue') ? P.zipSubmissions.filter((z) => ['pending', 'approved'].includes(z.status)) : []),
-  );
-  const open = useCollection(
-    () => (can('dataRequests') ? query(collection(db, 'dataRequests'), where('status', '==', 'open')) : null),
-    [can('dataRequests')],
-    () => (can('dataRequests') ? P.dataRequests.filter((r) => r.status === 'open') : []),
   );
   const flagged = useCollection(
     () => (can('zipSubmit') && user ? query(collection(db, 'zipSubmissions'), where('submittedBy', '==', user.uid), where('status', '==', 'flagged')) : null),
@@ -76,7 +71,6 @@ function useNavCounts() {
 
   return {
     pending: pending.data.length,
-    open: open.data.length,
     flagged: flagged.data.length,
     tasks: myTasks.data.filter((t) => t.status !== 'done').length
       + shared.data.filter((t) => t.status !== 'done' && t.assigneeIds?.includes(user?.uid)).length,
@@ -151,7 +145,7 @@ function Sidebar({ onNavigate, counts, pillId }) {
       <div className="relative border-t border-white/[0.06] p-2.5">
         <div className="flex items-center gap-2.5 rounded-md px-1.5 py-1.5 transition-colors hover:bg-white/[0.04]">
           <Link to="/account" onClick={onNavigate} title="My account" className="flex min-w-0 flex-1 items-center gap-2.5">
-          <Avatar name={profile?.name} size="sm" />
+          <Avatar name={profile?.name} src={profile?.photoURL} size="sm" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-[13px] font-medium text-slate-100">{profile?.name}</p>
             <p className="truncate text-[11px] text-slate-500">{ROLES[role]?.label}{profile?.department ? ` · ${profile.department}` : ''}</p>
@@ -171,6 +165,12 @@ function Sidebar({ onNavigate, counts, pillId }) {
 }
 
 export default function Layout() {
+  const { data: users } = useUsers();
+  const photos = useMemo(() => new Map(users.filter((u) => u.photoURL).map((u) => [u.id, u.photoURL])), [users]);
+  return <PhotoContext.Provider value={photos}><LayoutInner /></PhotoContext.Provider>;
+}
+
+function LayoutInner() {
   const [open, setOpen] = useState(false);
   const [palette, setPalette] = useState(false);
   const { role, preview, setPreviewRole, profile } = useAuth();

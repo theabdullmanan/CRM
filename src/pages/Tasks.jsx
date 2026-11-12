@@ -104,7 +104,7 @@ function TaskRow({ t, onEdit }) {
         </div>
         {t.description && <p className="mt-1 line-clamp-2 text-sm text-slate-500">{t.description}</p>}
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
-          <span className="flex items-center gap-1.5"><Avatar name={t.assigneeName} size="sm" />{t.assigneeName}</span>
+          <span className="flex items-center gap-1.5"><Avatar name={t.assigneeName} userId={t.assigneeId} size="sm" />{t.assigneeName}</span>
           <span className={cn('flex items-center gap-1', overdue && 'font-medium text-down-600')}>
             <Clock className="h-3.5 w-3.5" />
             {t.status === 'done' ? `Done ${fromNow(t.completedAt)}${t.completedAt && toDate(t.completedAt) > toDate(t.dueDate) ? ' · late' : ''}` : `Due ${isToday(toDate(t.dueDate)) ? `today ${format(toDate(t.dueDate), 'h:mm a')}` : fmtDateTime(t.dueDate)} (${fromNow(t.dueDate)})`}
@@ -154,7 +154,7 @@ function TeamProgress({ tasks }) {
       {rows.map((r) => (
         <div key={r.u.id} className="flex flex-wrap items-center gap-4 px-5 py-4">
           <div className="flex w-56 items-center gap-3">
-            <Avatar name={r.u.name} />
+            <Avatar name={r.u.name} userId={r.u.id} />
             <div className="min-w-0">
               <p className="truncate font-medium text-slate-900">{r.u.name}</p>
               <p className="truncate text-xs text-slate-500">{r.u.department || r.u.role}</p>

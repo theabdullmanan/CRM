@@ -3,13 +3,13 @@ import { format } from 'date-fns';
 import { Link, useNavigate } from 'react-router-dom';
 import { collection, limit, orderBy, query } from 'firebase/firestore';
 import {
-  DollarSign, TrendingUp, MapPin, AlertTriangle, ClipboardCheck, Database, CheckSquare, Clock, Users, ArrowRight, Activity, Plus, Building2,
+  DollarSign, TrendingUp, MapPin, AlertTriangle, ClipboardCheck, CheckSquare, Clock, Users, ArrowRight, Activity, Plus, Building2,
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { previewDb } from '../lib/preview';
 import { useAuth } from '../contexts/AuthContext';
 import { useCollection } from '../hooks/useFirestore';
-import { useClients, useDataRequests, usePayments, useTasks, useZipSubmissions } from '../hooks/useData';
+import { useClients, usePayments, useTasks, useZipSubmissions } from '../hooks/useData';
 import { computeSpend, dailySeries, pctChange, withChange } from '../lib/spend';
 import { ROLES, TASK_PRIORITY } from '../lib/constants';
 import { cn, fmtDateTime, fromNow, money, toDate } from '../lib/utils';
@@ -52,7 +52,6 @@ export default function Dashboard() {
   const { data: myTasks } = useTasks('mine');
   const { data: mySubs } = useZipSubmissions(can('zipSubmit') ? { field: 'submittedBy', op: '==', value: profile.id } : null);
   const { data: queue } = useZipSubmissions(can('zipQueue') ? { field: 'status', op: 'in', value: ['pending', 'approved'] } : null);
-  const { data: requests } = useDataRequests();
   const { data: clients } = useClients();
   const { data: activity } = useCollection(
     () => (can('teamProgress') ? query(collection(db, 'activity'), orderBy('createdAt', 'desc'), limit(12)) : null),
@@ -69,7 +68,6 @@ export default function Dashboard() {
   const t = spend.totals;
   const openTasks = myTasks.filter((t) => t.status !== 'done').sort((a, b) => toDate(a.dueDate) - toDate(b.dueDate));
   const overdue = openTasks.filter((t) => toDate(t.dueDate) < new Date());
-  const openRequests = requests.filter((r) => r.status === 'open');
   const topClients = [...spend.clients].sort((a, b) => b.d30 - a.d30).slice(0, 6)
     .map((c) => ({ ...c, chg: pctChange(c.week, c.prevWeek), spark: dailySeries(c.byDay, 14).map((d) => d.spend) }));
 
@@ -83,9 +81,6 @@ export default function Dashboard() {
   }
   if (can('zipQueue')) {
     tiles.push(<StatCard key="queue" label="Ops queue" value={queue.length} sub="Valid zips to process" icon={ClipboardCheck} tone="amber" onClick={() => navigate('/zip-queue')} />);
-  }
-  if (can('dataRequests')) {
-    tiles.push(<StatCard key="req" label="Open CJ requests" value={openRequests.length} icon={Database} tone="sky" onClick={() => navigate('/data-requests')} />);
   }
   tiles.push(<StatCard key="tasks" label="My open tasks" value={openTasks.length} sub={overdue.length ? `${overdue.length} overdue` : 'None overdue'} icon={CheckSquare} tone={overdue.length ? 'red' : 'violet'} onClick={() => navigate('/tasks')} />);
   if (can('clients') && tiles.length < 4) {
@@ -178,7 +173,7 @@ export default function Dashboard() {
               <ul className="divide-y divide-slate-100">
                 {feed.map((a) => (
                   <li key={a.id} className="flex items-center gap-3 px-5 py-3">
-                    <Avatar name={a.userName} size="sm" />
+                    <Avatar name={a.userName} userId={a.userId} size="sm" />
                     <p className="flex-1 text-[13px] text-slate-600"><b className="font-medium text-slate-900">{a.userName}</b> {ACTION_LABEL[a.action]?.(a.details || {}) || a.action}</p>
                     <span className="whitespace-nowrap text-xs text-slate-400">{fromNow(a.createdAt)}</span>
                   </li>
@@ -208,22 +203,6 @@ export default function Dashboard() {
               </ul>
             )}
           </Card>
-
-          {can('dataRequests') && (
-            <Card>
-              <CardHeader title="Open CJ requests" actions={<Link to="/data-requests" className="text-[13px] font-medium text-slate-600 hover:text-slate-900">Open</Link>} />
-              {openRequests.length === 0 ? <EmptyState icon={Database} title="Nothing waiting on CJ" /> : (
-                <ul className="divide-y divide-slate-100">
-                  {openRequests.slice(0, 5).map((r) => (
-                    <li key={r.id} className="px-5 py-3">
-                      <p className="text-[13px] font-medium text-slate-900">{r.clientName} › {r.subAccountName}</p>
-                      <p className="text-xs text-slate-500">{r.zips.length} zips · requested {fromNow(r.createdAt)}</p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
-          )}
 
         </div>
       </div>
