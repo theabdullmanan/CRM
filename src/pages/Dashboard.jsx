@@ -30,6 +30,8 @@ const ACTION_LABEL = {
   'task.done': (d) => `completed "${d.title}"${d.late ? ' (late)' : ''}`,
   'client.create': (d) => `added client ${d.name}`,
   'client.update': (d) => `updated client ${d.name}`,
+  'client.assign': (d) => `assigned ${d.count} client${d.count === 1 ? '' : 's'} to ${d.csm}`,
+  'client.unassign': (d) => `unassigned ${d.count} client${d.count === 1 ? '' : 's'}`,
   'payment.add': (d) => `recorded ${money(d.amount)} for ${d.client}`,
   'payment.daily': (d) => `logged daily charges for ${d.clients} clients`,
   'payment.import': (d) => `imported ${d.rows} payments`,

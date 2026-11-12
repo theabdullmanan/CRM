@@ -1,47 +1,108 @@
 import { useMemo, useState } from 'react';
-import { Download, Mail, Phone, Users } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { Download, Mail, Phone, UserCheck, Users, X } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import { useAgency } from '../hooks/useAgency';
-import { cn, downloadCsv } from '../lib/utils';
+import { useDocument } from '../hooks/useFirestore';
+import { useActiveUsers } from '../hooks/useData';
+import { cn, downloadCsv, friendlyError } from '../lib/utils';
+import { ASSIGN_DOC, assignGhlUsers, ghlUserKey } from '../services/ghlAssignService';
 import { Avatar, Badge, Button, Card, EmptyState, PageHeader, PageLoader, SearchInput, Select, Table, Td, Th } from '../components/ui';
 import { LiveStatus, SheetPill, SubAccountDrawer } from '../components/agency';
 
 const PAGE = 100;
+const UNASSIGNED = '__none';
 const uniq = (list) => [...new Set(list.filter(Boolean))].sort((a, b) => a.localeCompare(b));
+const stop = (e) => e.stopPropagation();
+
+/** <option>s for CSMs first, then managers. */
+function ManagerOptions({ csms, managers }) {
+  return (
+    <>
+      {csms.length > 0 && <optgroup label="CSMs">{csms.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</optgroup>}
+      {managers.length > 0 && <optgroup label="Managers">{managers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</optgroup>}
+    </>
+  );
+}
 
 /**
  * Clients = the people on your GoHighLevel sub-accounts (live from n8n),
- * not clients typed in by hand. Click anyone to open their sub-account.
+ * not clients typed in by hand. Admins assign each one to a CSM or manager.
  */
 export default function Clients() {
+  const { profile, isAdmin } = useAuth();
   const agency = useAgency();
   const { rows, owners } = agency;
+  const { data: assignDoc } = useDocument('settings', ASSIGN_DOC);
+  const assignments = assignDoc?.assignments || {};
+  const { data: team } = useActiveUsers();
+  const csms = useMemo(() => team.filter((u) => u.role === 'csm'), [team]);
+  const managers = useMemo(() => team.filter((u) => u.role === 'manager'), [team]);
+  const byId = useMemo(() => Object.fromEntries(team.map((u) => [u.id, u])), [team]);
+
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
-  const [csm, setCsm] = useState('');
+  const [owner, setOwner] = useState(profile.role === 'csm' ? profile.id : '');
+  const [ghlCsm, setGhlCsm] = useState('');
   const [shown, setShown] = useState(PAGE);
-  const [selected, setSelected] = useState(null); // user key
+  const [openKey, setOpenKey] = useState(null);
+  const [picked, setPicked] = useState(() => new Set());
+  const [bulkTo, setBulkTo] = useState('');
+  const [busy, setBusy] = useState(false);
 
   // One entry per user per sub-account.
   const people = useMemo(() => rows.flatMap((r) => r.users.map((u, i) => ({
     ...u,
-    key: `${r.locationId}:${u.id || u.email || i}`,
+    key: ghlUserKey(r, u, i),
     sub: r,
     search: [u.name, u.email, u.phone, r.name, r.csm, r.city, r.state].join(' ').toLowerCase(),
   }))).sort((a, b) => (a.name || '').localeCompare(b.name || '')), [rows]);
 
-  const csms = useMemo(() => uniq(rows.map((r) => r.csm)), [rows]);
+  const ghlCsms = useMemo(() => uniq(rows.map((r) => r.csm)), [rows]);
+  const assignedTo = (p) => assignments[p.key]?.csmId || '';
 
   const list = useMemo(() => {
     const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return people.filter((p) => {
       if (status === 'active' && !p.sub.isActive) return false;
       if (status === 'inactive' && p.sub.isActive) return false;
-      if (csm && p.sub.csm !== csm) return false;
-      return words.every((w) => p.search.includes(w));
+      if (ghlCsm && p.sub.csm !== ghlCsm) return false;
+      const a = assignments[p.key]?.csmId || '';
+      if (owner === UNASSIGNED ? a : owner && a !== owner) return false;
+      const name = (assignments[p.key]?.csmName || '').toLowerCase();
+      return words.every((w) => p.search.includes(w) || name.includes(w));
     });
-  }, [people, search, status, csm]);
+  }, [people, search, status, ghlCsm, owner, assignments]);
 
-  const current = people.find((p) => p.key === selected);
+  const assignedCount = people.filter((p) => assignments[p.key]).length;
+  const current = people.find((p) => p.key === openKey);
+  const visible = list.slice(0, shown);
+  const allVisiblePicked = visible.length > 0 && visible.every((p) => picked.has(p.key));
+
+  const togglePick = (key) => setPicked((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
+  const toggleAll = () => setPicked((s) => {
+    const n = new Set(s);
+    visible.forEach((p) => (allVisiblePicked ? n.delete(p.key) : n.add(p.key)));
+    return n;
+  });
+
+  const assign = async (targets, csmId) => {
+    const csm = csmId === UNASSIGNED ? null : byId[csmId];
+    if (csmId !== UNASSIGNED && !csm) return;
+    setBusy(true);
+    try {
+      await assignGhlUsers(targets, csm, profile);
+      toast.success(csm
+        ? `${targets.length === 1 ? targets[0].name || 'User' : `${targets.length} users`} assigned to ${csm.name}`
+        : `${targets.length === 1 ? 'User' : `${targets.length} users`} unassigned`);
+      return true;
+    } catch (e) { toast.error(friendlyError(e)); return false; } finally { setBusy(false); }
+  };
+
+  const assignPicked = async () => {
+    const targets = people.filter((p) => picked.has(p.key));
+    if (await assign(targets, bulkTo)) { setPicked(new Set()); setBulkTo(''); }
+  };
 
   if (agency.status === 'idle' || agency.status === 'loading') return <PageLoader />;
   if (agency.status !== 'ready') {
@@ -53,17 +114,20 @@ export default function Clients() {
     );
   }
 
+  const resetPage = () => setShown(PAGE);
+
   return (
     <>
       <PageHeader
         title="Clients"
-        subtitle={`${people.length.toLocaleString()} users across ${rows.length.toLocaleString()} GoHighLevel sub-accounts`}
+        subtitle={`${people.length.toLocaleString()} users across ${rows.length.toLocaleString()} GoHighLevel sub-accounts · ${assignedCount.toLocaleString()} assigned`}
         actions={(
           <>
             <LiveStatus agency={agency} />
             <Button variant="secondary" icon={Download} onClick={() => downloadCsv('ghl-users.csv', list.map((p) => ({
               name: p.name || '', email: p.email || '', phone: p.phone || '',
-              subAccount: p.sub.name, locationId: p.sub.locationId, csm: p.sub.csm || '',
+              subAccount: p.sub.name, locationId: p.sub.locationId,
+              assignedTo: assignments[p.key]?.csmName || '', ghlCsm: p.sub.csm || '',
               city: p.sub.city || '', state: p.sub.state || '', status: p.sub.isActive ? 'Active' : 'Inactive',
             })))}>Export</Button>
           </>
@@ -72,18 +136,44 @@ export default function Clients() {
 
       <Card>
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 p-4">
-          <SearchInput value={search} onChange={(v) => { setSearch(v); setShown(PAGE); }} placeholder="Search name, email, phone, sub-account, CSM…" />
-          <Select value={status} onChange={(e) => { setStatus(e.target.value); setShown(PAGE); }} className="w-auto">
+          <SearchInput value={search} onChange={(v) => { setSearch(v); resetPage(); }} placeholder="Search name, email, phone, sub-account, CSM…" />
+          <Select value={owner} onChange={(e) => { setOwner(e.target.value); resetPage(); }} className="w-auto">
+            <option value="">Assigned to: anyone</option>
+            <option value={UNASSIGNED}>Unassigned</option>
+            <ManagerOptions csms={csms} managers={managers} />
+          </Select>
+          <Select value={status} onChange={(e) => { setStatus(e.target.value); resetPage(); }} className="w-auto">
             <option value="all">All sub-accounts</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </Select>
-          <Select value={csm} onChange={(e) => { setCsm(e.target.value); setShown(PAGE); }} className="w-auto">
-            <option value="">All CSMs</option>
-            {csms.map((c) => <option key={c} value={c}>{c}</option>)}
-          </Select>
+          {ghlCsms.length > 0 && (
+            <Select value={ghlCsm} onChange={(e) => { setGhlCsm(e.target.value); resetPage(); }} className="w-auto" title="CSM recorded in GoHighLevel">
+              <option value="">GHL CSM: all</option>
+              {ghlCsms.map((c) => <option key={c} value={c}>{c}</option>)}
+            </Select>
+          )}
           <span className="ml-auto text-xs text-slate-500">{list.length.toLocaleString()} shown</span>
         </div>
+
+        {isAdmin && picked.size > 0 && (
+          <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3">
+            <p className="text-[13px] font-medium text-slate-800">{picked.size} selected</p>
+            <Select value={bulkTo} onChange={(e) => setBulkTo(e.target.value)} className="w-auto">
+              <option value="">Assign to…</option>
+              <ManagerOptions csms={csms} managers={managers} />
+              <option value={UNASSIGNED}>Remove assignment</option>
+            </Select>
+            <Button size="sm" icon={UserCheck} loading={busy} disabled={!bulkTo} onClick={assignPicked}>Apply</Button>
+            <Button size="sm" variant="ghost" icon={X} onClick={() => setPicked(new Set())}>Clear</Button>
+          </div>
+        )}
+
+        {isAdmin && !csms.length && !managers.length && (
+          <p className="border-b border-slate-100 bg-amber-50 px-4 py-2.5 text-[13px] text-amber-800">
+            There are no active CSMs or managers yet. Add one from <b>Add user</b> to start assigning clients.
+          </p>
+        )}
 
         {list.length === 0 ? (
           <EmptyState icon={Users} title="No users found" message={people.length ? 'Try a different search or filter.' : 'Your GHL sub-accounts have no users yet.'} />
@@ -91,31 +181,59 @@ export default function Clients() {
           <>
             <Table>
               <thead>
-                <tr><Th>User</Th><Th>Phone</Th><Th>Sub-account</Th><Th>CSM</Th><Th>Status</Th><Th>Sheet</Th></tr>
+                <tr>
+                  {isAdmin && (
+                    <Th className="w-10">
+                      <input type="checkbox" checked={allVisiblePicked} onChange={toggleAll} aria-label="Select all shown"
+                        className="h-4 w-4 cursor-pointer rounded border-slate-300 text-slate-900" />
+                    </Th>
+                  )}
+                  <Th>User</Th><Th>Phone</Th><Th>Sub-account</Th><Th>Assigned CSM</Th><Th>Status</Th><Th>Sheet</Th>
+                </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {list.slice(0, shown).map((p) => (
-                  <tr key={p.key} onClick={() => setSelected(p.key)}
-                    className={cn('cursor-pointer hover:bg-slate-50', selected === p.key && 'bg-slate-50')}>
-                    <Td>
-                      <div className="flex items-center gap-3">
-                        <Avatar name={p.name || p.email} size="sm" />
-                        <div className="min-w-0">
-                          <p className="max-w-[240px] truncate font-medium text-slate-900">{p.name || '—'}</p>
-                          <p className="flex max-w-[240px] items-center gap-1 truncate text-xs text-slate-500"><Mail className="h-3 w-3 shrink-0" />{p.email || '—'}</p>
+                {visible.map((p) => {
+                  const a = assignments[p.key];
+                  return (
+                    <tr key={p.key} onClick={() => setOpenKey(p.key)}
+                      className={cn('cursor-pointer hover:bg-slate-50', (openKey === p.key || picked.has(p.key)) && 'bg-slate-50')}>
+                      {isAdmin && (
+                        <Td onClick={stop}>
+                          <input type="checkbox" checked={picked.has(p.key)} onChange={() => togglePick(p.key)} aria-label={`Select ${p.name || p.email}`}
+                            className="h-4 w-4 cursor-pointer rounded border-slate-300 text-slate-900" />
+                        </Td>
+                      )}
+                      <Td>
+                        <div className="flex items-center gap-3">
+                          <Avatar name={p.name || p.email} size="sm" />
+                          <div className="min-w-0">
+                            <p className="max-w-[240px] truncate font-medium text-slate-900">{p.name || '—'}</p>
+                            <p className="flex max-w-[240px] items-center gap-1 truncate text-xs text-slate-500"><Mail className="h-3 w-3 shrink-0" />{p.email || '—'}</p>
+                          </div>
                         </div>
-                      </div>
-                    </Td>
-                    <Td className="whitespace-nowrap text-slate-600">{p.phone ? <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{p.phone}</span> : '—'}</Td>
-                    <Td>
-                      <p className="max-w-[260px] truncate text-slate-800" title={p.sub.name}>{p.sub.name}</p>
-                      <p className="text-xs text-slate-500">{[p.sub.city, p.sub.state].filter(Boolean).join(', ') || '—'}</p>
-                    </Td>
-                    <Td className="text-slate-600">{p.sub.csm || <span className="text-slate-400">—</span>}</Td>
-                    <Td>{p.sub.isActive ? <Badge color="emerald" dot>Active</Badge> : <Badge color="red" dot>Inactive</Badge>}</Td>
-                    <Td><SheetPill status={p.sub.sheetStatus} /></Td>
-                  </tr>
-                ))}
+                      </Td>
+                      <Td className="whitespace-nowrap text-slate-600">{p.phone ? <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{p.phone}</span> : '—'}</Td>
+                      <Td>
+                        <p className="max-w-[240px] truncate text-slate-800" title={p.sub.name}>{p.sub.name}</p>
+                        <p className="text-xs text-slate-500">{[p.sub.city, p.sub.state].filter(Boolean).join(', ') || '—'}{p.sub.csm ? ` · GHL CSM ${p.sub.csm}` : ''}</p>
+                      </Td>
+                      <Td onClick={isAdmin ? stop : undefined}>
+                        {isAdmin ? (
+                          <Select value={assignedTo(p)} disabled={busy} onChange={(e) => assign([p], e.target.value || UNASSIGNED)}
+                            className={cn('h-8 w-44 text-[12.5px]', !a && 'text-slate-400')}>
+                            <option value="">Unassigned</option>
+                            <ManagerOptions csms={csms} managers={managers} />
+                            {a && !byId[a.csmId] && <option value={a.csmId}>{a.csmName} (inactive)</option>}
+                          </Select>
+                        ) : a ? (
+                          <span className="flex items-center gap-2"><Avatar name={a.csmName} userId={a.csmId} size="sm" /><span className="text-slate-800">{a.csmName}</span></span>
+                        ) : <span className="text-slate-400">Unassigned</span>}
+                      </Td>
+                      <Td>{p.sub.isActive ? <Badge color="emerald" dot>Active</Badge> : <Badge color="red" dot>Inactive</Badge>}</Td>
+                      <Td><SheetPill status={p.sub.sheetStatus} /></Td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </Table>
             {list.length > shown && (
@@ -129,7 +247,7 @@ export default function Clients() {
         )}
       </Card>
 
-      <SubAccountDrawer row={current?.sub} owners={owners} onClose={() => setSelected(null)} />
+      <SubAccountDrawer row={current?.sub} owners={owners} onClose={() => setOpenKey(null)} />
     </>
   );
 }
