@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Download, Mail, Phone, UserCheck, Users, X } from 'lucide-react';
+import { Activity, Download, FileSpreadsheet, Mail, Phone, SlidersHorizontal, UserCheck, Users, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useAgency } from '../hooks/useAgency';
 import { useDocument } from '../hooks/useFirestore';
@@ -9,11 +9,63 @@ import { cn, downloadCsv, friendlyError } from '../lib/utils';
 import { ASSIGN_DOC, assignGhlUsers, ghlUserKey } from '../services/ghlAssignService';
 import { Avatar, Badge, Button, Card, EmptyState, PageHeader, PageLoader, SearchInput, Select, Table, Td, Th } from '../components/ui';
 import { LiveStatus, SheetPill, SubAccountDrawer } from '../components/agency';
+import { sheetMeta } from '../lib/agency';
 
 const PAGE = 100;
 const UNASSIGNED = '__none';
 const uniq = (list) => [...new Set(list.filter(Boolean))].sort((a, b) => a.localeCompare(b));
 const stop = (e) => e.stopPropagation();
+
+// Sheet status filter: the status column from the Google Sheet, per sub-account.
+const NOT_IN_SHEET = '__none';
+const sheetKey = (p) => (p.sub.sheetStatus || '').toLowerCase() || NOT_IN_SHEET;
+const SHEET_ORDER = ['active', 'pending', 'paused', 'no contacts', NOT_IN_SHEET];
+const DOT = { emerald: 'bg-emerald-500', red: 'bg-rose-500', amber: 'bg-amber-500', sky: 'bg-sky-500', slate: 'bg-slate-400' };
+const sheetLabel = (key, raw) => (key === NOT_IN_SHEET ? sheetMeta('') : sheetMeta(raw || key));
+
+/** Segmented sheet-status filter with a live count per status. */
+function SheetTabs({ value, onChange, counts, total }) {
+  const tabs = [['all', 'All users', null, total], ...counts.map(([key, raw, n]) => [key, sheetLabel(key, raw).label, sheetLabel(key, raw).color, n])];
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {tabs.map(([key, label, color, n]) => {
+        const active = value === key;
+        return (
+          <button
+            key={key}
+            type="button"
+            onClick={() => onChange(key)}
+            className={cn(
+              'group inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-[13px] font-semibold transition-all duration-150',
+              active
+                ? 'border-brand-500/40 bg-brand-600 text-white shadow-[0_4px_14px_-6px_rgba(80,70,229,.7)]'
+                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900',
+            )}
+          >
+            {color && <span className={cn('h-2 w-2 rounded-full', active ? 'bg-[#ffffff]' : DOT[color] || DOT.slate)} />}
+            {label}
+            <span className={cn('rounded-full px-1.5 py-px font-mono text-[11px] tabular-nums', active ? 'bg-[#ffffff]/20 text-white' : 'bg-slate-100 text-slate-500 group-hover:text-slate-700')}>
+              {n.toLocaleString()}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Compact select with a leading icon, used in the filter toolbar. */
+function FilterSelect({ icon: Icon, value, onChange, children, title, active }) {
+  return (
+    <label className="relative" title={title}>
+      <Icon className={cn('pointer-events-none absolute left-3 top-1/2 z-[1] h-3.5 w-3.5 -translate-y-1/2', active ? 'text-brand-600' : 'text-slate-400')} />
+      <Select value={value} onChange={onChange}
+        className={cn('h-9 w-auto max-w-[220px] pl-8 text-[13px] font-medium', active && 'border-brand-300 bg-brand-50/60 text-brand-800')}>
+        {children}
+      </Select>
+    </label>
+  );
+}
 
 /** <option>s for CSMs first, then managers. */
 function ManagerOptions({ csms, managers }) {
@@ -42,6 +94,7 @@ export default function Clients() {
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
+  const [sheet, setSheet] = useState('all');
   const [owner, setOwner] = useState(profile.role === 'csm' ? profile.id : '');
   const [ghlCsm, setGhlCsm] = useState('');
   const [shown, setShown] = useState(PAGE);
@@ -64,6 +117,7 @@ export default function Clients() {
   const list = useMemo(() => {
     const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return people.filter((p) => {
+      if (sheet !== 'all' && sheetKey(p) !== sheet) return false;
       if (status === 'active' && !p.sub.isActive) return false;
       if (status === 'inactive' && p.sub.isActive) return false;
       if (ghlCsm && p.sub.csm !== ghlCsm) return false;
@@ -72,7 +126,20 @@ export default function Clients() {
       const name = (assignments[p.key]?.csmName || '').toLowerCase();
       return words.every((w) => p.search.includes(w) || name.includes(w));
     });
-  }, [people, search, status, ghlCsm, owner, assignments]);
+  }, [people, search, sheet, status, ghlCsm, owner, assignments]);
+
+  // Count of users per sheet status (known statuses first, then any others found in the sheet).
+  const sheetCounts = useMemo(() => {
+    const m = new Map();
+    people.forEach((p) => {
+      const k = sheetKey(p);
+      const e = m.get(k) || [k, p.sub.sheetStatus, 0];
+      e[2] += 1;
+      m.set(k, e);
+    });
+    const rank = (k) => { const i = SHEET_ORDER.indexOf(k); return i < 0 ? SHEET_ORDER.length - 1 : i; };
+    return [...m.values()].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]));
+  }, [people]);
 
   const assignedCount = people.filter((p) => assignments[p.key]).length;
   const current = people.find((p) => p.key === openKey);
@@ -116,6 +183,16 @@ export default function Clients() {
 
   const resetPage = () => setShown(PAGE);
 
+  // Chips for every filter that's switched on: [label, clear()].
+  const chips = [
+    sheet !== 'all' && [`Sheet: ${sheetLabel(sheet, sheetCounts.find(([k]) => k === sheet)?.[1]).label}`, () => setSheet('all')],
+    owner && [`Assigned: ${owner === UNASSIGNED ? 'Unassigned' : byId[owner]?.name || 'someone'}`, () => setOwner('')],
+    status !== 'all' && [`GHL: ${status === 'active' ? 'Active' : 'Inactive'}`, () => setStatus('all')],
+    ghlCsm && [`GHL CSM: ${ghlCsm}`, () => setGhlCsm('')],
+    search.trim() && [`“${search.trim()}”`, () => setSearch('')],
+  ].filter(Boolean);
+  const clearAll = () => { setSheet('all'); setOwner(''); setStatus('all'); setGhlCsm(''); setSearch(''); resetPage(); };
+
   return (
     <>
       <PageHeader
@@ -128,33 +205,65 @@ export default function Clients() {
               name: p.name || '', email: p.email || '', phone: p.phone || '',
               subAccount: p.sub.name, locationId: p.sub.locationId,
               assignedTo: assignments[p.key]?.csmName || '', ghlCsm: p.sub.csm || '',
-              city: p.sub.city || '', state: p.sub.state || '', status: p.sub.isActive ? 'Active' : 'Inactive',
+              city: p.sub.city || '', state: p.sub.state || '', status: p.sub.isActive ? 'Active' : 'Inactive', sheetStatus: sheetMeta(p.sub.sheetStatus).label,
             })))}>Export</Button>
           </>
         )}
       />
 
-      <Card>
-        <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 p-4">
-          <SearchInput value={search} onChange={(v) => { setSearch(v); resetPage(); }} placeholder="Search name, email, phone, sub-account, CSM…" />
-          <Select value={owner} onChange={(e) => { setOwner(e.target.value); resetPage(); }} className="w-auto">
+      <Card className="overflow-hidden">
+        {/* Sheet status */}
+        <div className="border-b border-slate-100 px-4 pb-3.5 pt-4">
+          <div className="mb-2.5 flex items-center gap-2">
+            <FileSpreadsheet className="h-4 w-4 text-brand-500" />
+            <p className="text-[12px] font-bold uppercase tracking-[0.08em] text-slate-500">Sheet status</p>
+          </div>
+          <SheetTabs value={sheet} onChange={(v) => { setSheet(v); resetPage(); }} counts={sheetCounts} total={people.length} />
+        </div>
+
+        {/* Search + filters */}
+        <div className="flex flex-wrap items-center gap-2.5 border-b border-slate-100 bg-slate-50/50 px-4 py-3">
+          <SearchInput value={search} onChange={(v) => { setSearch(v); resetPage(); }} placeholder="Search name, email, phone, sub-account, CSM…" className="min-w-[240px] flex-1 sm:max-w-sm" />
+          <span className="mx-1 hidden h-6 w-px bg-slate-200 lg:block" />
+          <SlidersHorizontal className="hidden h-4 w-4 text-slate-400 lg:block" />
+          <FilterSelect icon={UserCheck} value={owner} onChange={(e) => { setOwner(e.target.value); resetPage(); }} active={Boolean(owner)} title="Who the user is assigned to in the CRM">
             <option value="">Assigned to: anyone</option>
             <option value={UNASSIGNED}>Unassigned</option>
             <ManagerOptions csms={csms} managers={managers} />
-          </Select>
-          <Select value={status} onChange={(e) => { setStatus(e.target.value); resetPage(); }} className="w-auto">
-            <option value="all">All sub-accounts</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </Select>
+          </FilterSelect>
+          <FilterSelect icon={Activity} value={status} onChange={(e) => { setStatus(e.target.value); resetPage(); }} active={status !== 'all'} title="Sub-account status in GoHighLevel">
+            <option value="all">GHL status: all</option>
+            <option value="active">GHL: Active</option>
+            <option value="inactive">GHL: Inactive</option>
+          </FilterSelect>
           {ghlCsms.length > 0 && (
-            <Select value={ghlCsm} onChange={(e) => { setGhlCsm(e.target.value); resetPage(); }} className="w-auto" title="CSM recorded in GoHighLevel">
+            <FilterSelect icon={Users} value={ghlCsm} onChange={(e) => { setGhlCsm(e.target.value); resetPage(); }} active={Boolean(ghlCsm)} title="CSM recorded in GoHighLevel">
               <option value="">GHL CSM: all</option>
               {ghlCsms.map((c) => <option key={c} value={c}>{c}</option>)}
-            </Select>
+            </FilterSelect>
           )}
-          <span className="ml-auto text-xs text-slate-500">{list.length.toLocaleString()} shown</span>
+          <p className="ml-auto whitespace-nowrap text-[12.5px] text-slate-500">
+            Showing <b className="font-semibold text-slate-900 tabular-nums">{list.length.toLocaleString()}</b> of <span className="tabular-nums">{people.length.toLocaleString()}</span>
+          </p>
         </div>
+
+        {/* Active filter chips */}
+        {chips.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-2.5">
+            <span className="text-[12px] font-medium text-slate-500">Filtered by</span>
+            {chips.map(([label, clear]) => (
+              <span key={label} className="inline-flex items-center gap-1 rounded-full bg-brand-50 py-1 pl-2.5 pr-1 text-[12px] font-semibold text-brand-700 ring-1 ring-inset ring-brand-100">
+                {label}
+                <button type="button" onClick={() => { clear(); resetPage(); }} className="rounded-full p-0.5 text-brand-500 transition-colors hover:bg-brand-100 hover:text-brand-800" aria-label={`Remove ${label}`}>
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+            <button type="button" onClick={clearAll} className="ml-1 text-[12px] font-semibold text-slate-500 underline-offset-2 hover:text-slate-900 hover:underline">
+              Clear all
+            </button>
+          </div>
+        )}
 
         {isAdmin && picked.size > 0 && (
           <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3">
@@ -176,7 +285,7 @@ export default function Clients() {
         )}
 
         {list.length === 0 ? (
-          <EmptyState icon={Users} title="No users found" message={people.length ? 'Try a different search or filter.' : 'Your GHL sub-accounts have no users yet.'} />
+          <EmptyState icon={Users} title="No users found" message={people.length ? 'No users match these filters.' : 'Your GHL sub-accounts have no users yet.'} action={people.length && chips.length ? <Button variant="secondary" size="sm" icon={X} onClick={clearAll}>Clear filters</Button> : null} />
         ) : (
           <>
             <Table>
