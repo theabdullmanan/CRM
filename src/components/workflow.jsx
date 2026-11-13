@@ -173,18 +173,20 @@ export function WorkflowBoard({ compact = false }) {
     const waiting = jobs.filter((j) => j.upload && j.upload.status !== 'done');
     const withDevs = jobs.filter((j) => j.process && j.process.status !== 'done');
     const done = jobs.filter((j) => j.process?.status === 'done');
+    // Super Admins oversee the queue; uploading the CSV is the Admins' job.
+    const overseer = role === 'superadmin';
     return (
       <Card>
-        <CardHeader title="Zip code workflow" subtitle="Backend Developers submit zips → you upload the CSV → the first developer to finish completes it."
+        <CardHeader title="Zip code workflow" subtitle={overseer ? "Overview of the Admins' queue: zips are submitted → an Admin uploads the CSV → the first developer to finish completes it." : "Zips are submitted (Managers, CSMs, Backend Developers) → you upload the CSV → the first developer to finish completes it."}
           actions={compact && <Link to="/tasks?view=workflow" className="text-[13px] font-medium text-slate-600 hover:text-slate-900">Open</Link>} />
         <div className="space-y-6 p-5">
-          <Section title="Waiting for your CSV" count={waiting.length}
+          <Section title={overseer ? "Waiting for an Admin to upload the CSV" : "Waiting for your CSV"} count={waiting.length}
             empty={!waiting.length && <p className="rounded-lg border border-dashed border-slate-200 px-4 py-5 text-center text-[13px] text-slate-500">Nothing to upload right now.</p>}>
             {waiting.slice(0, limit).map((j) => (
               <JobCard key={j.jobId} job={j}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <JobHeader t={j.upload} />
-                  <div className="flex items-center gap-2"><Badge color="amber" dot>Needs CSV</Badge><UploadButton task={j.upload} /></div>
+                  <div className="flex items-center gap-2"><Badge color="amber" dot>{overseer ? "With the Admins" : "Needs CSV"}</Badge>{!overseer && <UploadButton task={j.upload} />}</div>
                 </div>
                 <div className="flex flex-wrap gap-1">{(j.upload.zips || []).slice(0, 24).map((z) => <span key={z} className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-700">{z}</span>)}</div>
               </JobCard>

@@ -6,7 +6,7 @@ import { Crown, Trash2, UserCheck, UserX, ShieldCheck, Users, UserPlus } from 'l
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useDepartments, useUsers } from '../hooks/useData';
-import { ASSIGNABLE_ROLES, ROLES, isAdminRole, roleGroupsFor } from '../lib/constants';
+import { ASSIGNABLE_ROLES, ROLES, assignableFor, isAdminRole, roleGroupsFor } from '../lib/constants';
 import { fmtDate, friendlyError } from '../lib/utils';
 import { notifyUsers, logActivity } from '../services/notifications';
 import { deleteUserAccount } from '../services/userService';
@@ -34,7 +34,7 @@ function PendingRow({ u, departments, onDelete }) {
         <p className="text-xs text-slate-500">{u.email} · signed up {fmtDate(u.createdAt)}</p>
       </div>
       <Select value={role} onChange={(e) => setRole(e.target.value)} className="sm:w-44">
-        {(isSuperAdmin ? ['superadmin', ...ASSIGNABLE_ROLES] : ASSIGNABLE_ROLES).map((r) => <option key={r} value={r}>{ROLES[r].label}</option>)}
+        {assignableFor(isSuperAdmin).map((r) => <option key={r} value={r}>{ROLES[r].label}</option>)}
       </Select>
       <Select value={dept} onChange={(e) => setDept(e.target.value)} className="sm:w-52">
         <option value="">No department</option>
@@ -98,7 +98,10 @@ export default function Team() {
           <Table>
             <thead><tr><Th>Person</Th><Th>Role</Th><Th>Department</Th><Th>Status</Th><Th>Joined</Th><Th /></tr></thead>
             <tbody className="divide-y divide-slate-100">
-              {members.map((u) => (
+              {members.map((u) => {
+                // Admin accounts are managed by Super Admins only; Super Admins on their own page.
+                const lockedAdmin = u.role === 'admin' && !isSuperAdmin;
+                return (
                 <tr key={u.id} className={u.active ? '' : 'opacity-60'}>
                   <Td>
                     <div className="flex items-center gap-3">
@@ -112,6 +115,8 @@ export default function Team() {
                   <Td>
                     {u.role === 'superadmin' ? (
                       <span title="Super admins are managed from the Super Admin dashboard"><Badge color={ROLES.superadmin.color}><Crown className="h-3 w-3" />{ROLES.superadmin.label}</Badge></span>
+                    ) : lockedAdmin ? (
+                      <span title="Admins are managed by a Super Admin"><Badge color={ROLES.admin.color}><ShieldCheck className="h-3 w-3" />{ROLES.admin.label}</Badge></span>
                     ) : (
                       <Select value={u.role} onChange={(e) => update(u, { role: e.target.value })} className="h-8 w-44 py-1">
                         {roleGroupsFor(isSuperAdmin).map(([g, roles]) => <optgroup key={g} label={g}>{roles.map((r) => <option key={r} value={r}>{ROLES[r].label}</option>)}</optgroup>)}
@@ -119,11 +124,13 @@ export default function Team() {
                     )}
                   </Td>
                   <Td>
+                    {lockedAdmin ? <span className="text-slate-600">{u.department || '—'}</span> : (
                     <Select value={u.department || ''} onChange={(e) => update(u, { department: e.target.value })} className="h-8 w-44 py-1">
                       <option value="">—</option>
                       {departments.map((d) => <option key={d.id} value={d.name}>{d.name}</option>)}
                       {u.department && !departments.some((d) => d.name === u.department) && <option value={u.department}>{u.department}</option>}
                     </Select>
+                    )}
                   </Td>
                   <Td>
                     <div className="flex flex-wrap gap-1">
@@ -136,10 +143,12 @@ export default function Team() {
                     <div className="flex items-center justify-end gap-1">
                       {u.role === 'superadmin'
                         ? (isSuperAdmin && <Link to="/super-admin" className="text-xs font-medium text-slate-500 hover:text-slate-900">Manage</Link>)
+                        : lockedAdmin
+                        ? <span className="whitespace-nowrap text-xs text-slate-400">Managed by Super Admin</span>
                         : u.active
                         ? <Button size="xs" variant="ghost" icon={UserX} onClick={() => update(u, { active: false })}>Disable</Button>
                         : <Button size="xs" variant="subtle" icon={UserCheck} onClick={() => update(u, { active: true })}>Enable</Button>}
-                      {u.id !== profile.id && u.role !== 'superadmin' && (
+                      {u.id !== profile.id && u.role !== 'superadmin' && !lockedAdmin && (
                         <button type="button" title="Delete account" onClick={() => remove(u)} className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600">
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -147,7 +156,8 @@ export default function Team() {
                     </div>
                   </Td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </Table>
         )}

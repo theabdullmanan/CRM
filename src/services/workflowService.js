@@ -1,7 +1,7 @@
 /**
  * Zip-code → contact-sheet workflow (shared "pool" tasks).
  *
- *  1. A Backend Developer submits zip codes   → task for every admin  (step "admin_upload")
+ *  1. A Manager, CSM, admin or Backend Developer submits zip codes → task for every admin (step "admin_upload")
  *  2. An admin uploads the CSV on that task    → task for every Backend Developer (step "dev_process")
  *  3. The first developer to complete it wins  → it disappears for the rest, who see who completed it
  *
@@ -12,17 +12,18 @@ import {
   addDays,
 } from 'date-fns';
 import {
-  collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, setDoc, Timestamp, where, writeBatch,
+  collection, deleteDoc, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, setDoc, Timestamp, where,
 } from 'firebase/firestore';
 import Papa from 'papaparse';
 import { db } from '../lib/firebase';
-import { ADMIN_ROLES } from '../lib/constants';
 import { logActivity, notifyUsers } from './notifications';
 
 export const WORKFLOW_KIND = 'zip_workflow';
 /** Roles whose zip submissions start the workflow. */
-export const WORKFLOW_SUBMITTERS = ['admin', 'manager', 'csm', 'backend_developer'];
+export const WORKFLOW_SUBMITTERS = ['superadmin', 'admin', 'manager', 'csm', 'backend_developer'];
 export const DEV_ROLE = 'backend_developer';
+/** Upload tasks go to Admins only. Super Admins oversee the queue but don't receive the work. */
+export const UPLOAD_ROLE = 'admin';
 
 const CHUNK = 700_000; // characters per Firestore chunk (doc limit is 1 MiB)
 
@@ -38,14 +39,18 @@ async function activeIds(roles) {
 
 const place = (t) => `${t.clientName} › ${t.subAccountName}`;
 
-/** Step 1 — called after a Backend Developer's zip submission. Returns the new task id (or null). */
-export async function startZipWorkflow({ results, client, subAccount, profile }) {
+/**
+ * Step 1 — called after a zip submission. Returns the new task id (or null).
+ * `requester` is who the zips are for (defaults to the signed-in user). It differs when a
+ * manager overrides someone else's flagged zip: the run is still credited to the submitter.
+ */
+export async function startZipWorkflow({ results, client, subAccount, profile, requester = profile }) {
   preview();
   if (!WORKFLOW_SUBMITTERS.includes(profile.role)) return null;
   const zips = results.filter((r) => r.status === 'pending').map((r) => r.zip);
   if (!zips.length) return null;
 
-  const adminIds = await activeIds(ADMIN_ROLES);
+  const adminIds = await activeIds(UPLOAD_ROLE);
   const ref = doc(collection(db, 'tasks'));
   const task = {
     kind: WORKFLOW_KIND,
@@ -56,15 +61,15 @@ export async function startZipWorkflow({ results, client, subAccount, profile })
     assigneeIds: adminIds,
     assigneeName: 'Admins',
     title: `Upload contact sheet · ${client.name} › ${subAccount.name}`,
-    description: `${profile.name} submitted ${zips.length} zip code${zips.length > 1 ? 's' : ''}. Upload the CSV to send it to the Backend Developers.`,
+    description: `${requester.name} submitted ${zips.length} zip code${zips.length > 1 ? 's' : ''}${requester.id !== profile.id ? ` (cooldown overridden by ${profile.name})` : ''}. Upload the CSV to send it to the Backend Developers.`,
     zips,
     zipCount: zips.length,
     clientId: client.id,
     clientName: client.name,
     subAccountId: subAccount.id,
     subAccountName: subAccount.name,
-    requestedBy: profile.id,
-    requestedByName: profile.name,
+    requestedBy: requester.id,
+    requestedByName: requester.name,
     requestedAt: serverTimestamp(),
     priority: 'high',
     status: 'todo',
@@ -77,7 +82,7 @@ export async function startZipWorkflow({ results, client, subAccount, profile })
   await setDoc(ref, task);
   await notifyUsers(adminIds, {
     title: `New zip codes need a contact sheet`,
-    body: `${profile.name} · ${zips.length} zips for ${place(task)}`,
+    body: `${requester.name} · ${zips.length} zips for ${place(task)}`,
     link: '/tasks?view=workflow',
     type: 'zip',
   }).catch(() => {});
@@ -108,45 +113,69 @@ export async function uploadSheetAndDispatch(task, file, profile) {
 
   const sheet = { sheetId: sheetRef.id, sheetName: file.name, sheetRows: rows, sheetSize: file.size };
   const devRef = doc(collection(db, 'tasks'));
-  const batch = writeBatch(db);
-  batch.update(doc(db, 'tasks', task.id), {
-    ...sheet,
-    status: 'done',
-    completedAt: serverTimestamp(),
-    completedBy: profile.id,
-    completedByName: profile.name,
-    nextTaskId: devRef.id,
-    updatedAt: serverTimestamp(),
-  });
-  batch.set(devRef, {
-    kind: WORKFLOW_KIND,
-    step: 'dev_process',
-    jobId: task.jobId,
-    pool: true,
-    assigneeRole: DEV_ROLE,
-    assigneeIds: devIds,
-    assigneeName: 'Backend Developers',
-    title: `Process contact sheet · ${place(task)}`,
-    description: `${profile.name} uploaded ${file.name} (${rows.toLocaleString()} rows) for ${task.zipCount} zip codes. The first developer to complete it takes it.`,
-    zips: task.zips,
-    zipCount: task.zipCount,
-    clientId: task.clientId,
-    clientName: task.clientName,
-    subAccountId: task.subAccountId,
-    subAccountName: task.subAccountName,
-    requestedBy: task.requestedBy,
-    requestedByName: task.requestedByName,
-    requestedAt: task.requestedAt || task.createdAt || null,
-    ...sheet,
-    priority: 'high',
-    status: 'todo',
-    dueDate: Timestamp.fromDate(addDays(new Date(), 1)),
-    createdBy: profile.id,
-    createdByName: profile.name,
-    createdAt: serverTimestamp(),
-    overdueNotified: false,
-  });
-  await batch.commit();
+  const taskRef = doc(db, 'tasks', task.id);
+  // A transaction re-reads the task, so two admins uploading at once can't both dispatch it.
+  try {
+    await runTransaction(db, async (tx) => {
+      const fresh = (await tx.get(taskRef)).data();
+      if (!fresh) throw new Error('This task no longer exists.');
+      if (fresh.status === 'done') {
+        const err = new Error(`${fresh.completedByName || 'Another admin'} already uploaded the CSV for this one.`);
+        err.code = 'already-done';
+        throw err;
+      }
+      tx.update(taskRef, {
+        ...sheet,
+        status: 'done',
+        completedAt: serverTimestamp(),
+        completedBy: profile.id,
+        completedByName: profile.name,
+        nextTaskId: devRef.id,
+        updatedAt: serverTimestamp(),
+      });
+      tx.set(devRef, {
+        kind: WORKFLOW_KIND,
+        step: 'dev_process',
+        jobId: task.jobId,
+        pool: true,
+        assigneeRole: DEV_ROLE,
+        assigneeIds: devIds,
+        assigneeName: 'Backend Developers',
+        title: `Process contact sheet · ${place(task)}`,
+        description: `${profile.name} uploaded ${file.name} (${rows.toLocaleString()} rows) for ${task.zipCount} zip codes. The first developer to complete it takes it.`,
+        zips: task.zips,
+        zipCount: task.zipCount,
+        clientId: task.clientId,
+        clientName: task.clientName,
+        subAccountId: task.subAccountId,
+        subAccountName: task.subAccountName,
+        requestedBy: task.requestedBy,
+        requestedByName: task.requestedByName,
+        requestedAt: task.requestedAt || task.createdAt || null,
+        ...sheet,
+        priority: 'high',
+        status: 'todo',
+        dueDate: Timestamp.fromDate(addDays(new Date(), 1)),
+        createdBy: profile.id,
+        createdByName: profile.name,
+        createdAt: serverTimestamp(),
+        overdueNotified: false,
+      });
+    });
+  } catch (e) {
+    removeSheet(sheetRef.id).catch(() => {}); // don't leave an unused file behind
+    throw e;
+  }
+
+  // Let whoever submitted the zips know their contact sheet is on its way.
+  if (task.requestedBy && task.requestedBy !== profile.id) {
+    notifyUsers([task.requestedBy], {
+      title: 'Contact sheet uploaded for your zips',
+      body: `${profile.name} uploaded ${file.name} for ${place(task)} · now with the Backend Developers`,
+      link: '/tasks?view=workflow',
+      type: 'info',
+    }).catch(() => {});
+  }
 
   await notifyUsers(devIds, {
     title: 'New task available: process a contact sheet',
@@ -185,7 +214,7 @@ export async function completePoolTask(task, profile) {
   });
 
   const others = (task.assigneeIds || []).filter((id) => id !== profile.id);
-  const adminIds = await activeIds(ADMIN_ROLES).catch(() => []);
+  const adminIds = await activeIds(UPLOAD_ROLE).catch(() => []);
   await Promise.all([
     notifyUsers(others, {
       title: `${profile.name} completed a shared task`,
@@ -201,6 +230,13 @@ export async function completePoolTask(task, profile) {
     }),
   ]).catch(() => {});
   logActivity(profile, 'workflow.done', { subAccount: task.subAccountName, title: task.title });
+}
+
+/** Deletes an uploaded CSV (meta doc + chunks). */
+async function removeSheet(sheetId) {
+  const chunks = await getDocs(collection(db, 'sheets', sheetId, 'chunks'));
+  await Promise.all(chunks.docs.map((d) => deleteDoc(d.ref)));
+  await deleteDoc(doc(db, 'sheets', sheetId));
 }
 
 /** Rebuilds an uploaded CSV from its chunks and downloads it. */

@@ -41,9 +41,9 @@ service cloud.firestore {
       allow read: if active() || (signedIn() && request.auth.uid == uid);
 
       // Admins create accounts for team members from the "Add user" page.
-      // Only super admins can create other super admins (Super Admin dashboard).
+      // Only Super Admins can create Admins and other Super Admins.
       allow create: if isSuperAdmin()
-        || (isAdmin() && request.resource.data.role != 'superadmin')
+        || (isAdmin() && !(request.resource.data.role in ['superadmin', 'admin']))
         || (signedIn() && request.auth.uid == uid && (
         // normal sign-up: waits for admin approval
         (request.resource.data.role == 'pending' && request.resource.data.active == false)
@@ -54,15 +54,15 @@ service cloud.firestore {
       ));
 
       allow update: if isSuperAdmin()
-        // admins can't touch super admins or promote anyone to super admin
-        || (isAdmin() && resource.data.role != 'superadmin' && request.resource.data.role != 'superadmin'
+        // Admins can't touch Admin / Super Admin accounts or promote anyone to those roles
+        || (isAdmin() && !(resource.data.role in ['superadmin', 'admin']) && !(request.resource.data.role in ['superadmin', 'admin'])
             && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['superAdminRevoked']))
         // existing installs: the original owner claims super admin once
         || (signedIn() && request.auth.uid == uid && bootstrapOwner() && active()
             && resource.data.role == 'admin' && resource.data.get('superAdminRevoked', false) == false
             && request.resource.data.role == 'superadmin' && onlyChanges(['role']))
         || (signedIn() && request.auth.uid == uid && onlyChanges(['name', 'phone', 'title', 'photoURL', 'accentColor', 'lastSeenAt', 'mustChangePassword', 'passwordChangedAt']));
-      allow delete: if isSuperAdmin() || (isAdmin() && resource.data.role != 'superadmin');
+      allow delete: if isSuperAdmin() || (isAdmin() && !(resource.data.role in ['superadmin', 'admin']));
     }
 
     // ---------- configuration ----------

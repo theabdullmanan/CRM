@@ -57,15 +57,17 @@ export async function createUserAccount({ name, email, password, role, departmen
 }
 
 /** Super admin creates another super admin login (email + starting password). */
-export function createSuperAdminAccount({ name, email, password }, superAdmin) {
+/** Super admin creates an Admin or another Super Admin (only Super Admins may do this). */
+export function createLeaderAccount({ name, email, password, role = 'admin' }, superAdmin) {
+  if (!['admin', 'superadmin'].includes(role)) throw new Error('Choose Admin or Super Admin.');
   const displayName = name?.trim() || email.trim().split('@')[0];
   return createUserAccount(
-    { name: displayName, email, password, role: 'superadmin', department: 'Management', jobTitle: 'Super Admin' },
+    { name: displayName, email, password, role, department: 'Management', jobTitle: role === 'superadmin' ? 'Super Admin' : 'Admin' },
     superAdmin,
   );
 }
 
-/** Super admin changes another super admin's role (e.g. demote to admin) or enables/disables them. */
+/** Super admin changes an Admin's or Super Admin's role, or enables/disables them. */
 export async function updateSuperAdmin(target, patch, superAdmin) {
   if (!db) throw new Error('Preview mode — connect Firebase to save changes.');
   await updateDoc(doc(db, 'users', target.id), patch);

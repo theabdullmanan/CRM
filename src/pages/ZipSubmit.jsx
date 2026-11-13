@@ -256,8 +256,19 @@ export default function ZipSubmit() {
                         <div className="flex justify-end gap-1">
                           {leadership && (
                             <Button size="xs" variant="subtle" icon={ShieldAlert} onClick={async () => {
-                              if (await confirm({ title: `Override cooldown for ${s.zip}?`, message: 'This sends the zip to Ops even though it is inside the cooldown window and restarts the cooldown for this scope.', confirmLabel: 'Override' })) {
-                                overrideFlag(s, profile, settings).then(() => toast.success('Override applied')).catch((e) => toast.error(friendlyError(e)));
+                              if (await confirm({ title: `Override cooldown for ${s.zip}?`, message: 'This sends the zip to Ops and to the admins for a contact sheet, even though it is inside the cooldown window, and restarts the cooldown for this scope.', confirmLabel: 'Override' })) {
+                                try {
+                                  await overrideFlag(s, profile, settings);
+                                  // The overridden zip joins the normal workflow: admins upload its contact sheet.
+                                  await startZipWorkflow({
+                                    results: [{ zip: s.zip, status: 'pending' }],
+                                    client: { id: s.clientId, name: s.clientName },
+                                    subAccount: { id: s.subAccountId, name: s.subAccountName },
+                                    profile,
+                                    requester: { id: s.submittedBy, name: s.submittedByName },
+                                  }).catch((err) => toast.error(`Override applied, but the admin task couldn't be created: ${friendlyError(err)}`));
+                                  toast.success('Override applied · sent to the admins for a contact sheet');
+                                } catch (e) { toast.error(friendlyError(e)); }
                               }
                             }}>Override</Button>
                           )}

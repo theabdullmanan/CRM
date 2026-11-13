@@ -2,20 +2,21 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
-  Check, Copy, Crown, Trash2, ShieldCheck, ShieldOff, UserCheck, UserPlus, Users, UserX, Hourglass, KeyRound,
+  Check, Copy, Crown, Trash2, ShieldCheck, ShieldOff, ShieldPlus, UserCheck, UserPlus, Users, UserX, Hourglass, KeyRound,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useUsers } from '../hooks/useData';
 import { ROLES } from '../lib/constants';
-import { fmtDate, friendlyError } from '../lib/utils';
-import { createSuperAdminAccount, deleteUserAccount, updateSuperAdmin } from '../services/userService';
+import { cn, fmtDate, friendlyError } from '../lib/utils';
+import { createLeaderAccount, deleteUserAccount, updateSuperAdmin } from '../services/userService';
 import { PasswordField } from '../components/PasswordField';
 import {
   Avatar, Badge, Button, Card, CardHeader, EmptyState, Field, Input, PageLoader, ProgressBar, StatCard, useConfirm,
 } from '../components/ui';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-const EMPTY = { name: '', email: '', password: '' };
+const EMPTY = { name: '', email: '', password: '', role: 'admin' };
+const ROLE_LABEL = { admin: 'Admin', superadmin: 'Super Admin' };
 
 const AUTH_ERRORS = {
   'auth/email-already-in-use': 'An account with this email already exists.',
@@ -24,7 +25,7 @@ const AUTH_ERRORS = {
   'auth/operation-not-allowed': 'Email/Password sign-in is turned off. Enable it in Firebase Console → Authentication → Sign-in method.',
 };
 
-function AddSuperAdmin({ profile }) {
+function AddLeader({ profile }) {
   const [form, setForm] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState(null);
@@ -39,22 +40,22 @@ function AddSuperAdmin({ profile }) {
     if (!valid) return;
     setBusy(true);
     try {
-      await createSuperAdminAccount(form, profile);
-      setCreated({ email: form.email.trim().toLowerCase(), password: form.password });
+      await createLeaderAccount(form, profile);
+      setCreated({ email: form.email.trim().toLowerCase(), password: form.password, role: form.role });
       setCopied(false);
-      setForm(EMPTY);
-      toast.success('Super admin account created');
+      setForm((f) => ({ ...EMPTY, role: f.role }));
+      toast.success(`${ROLE_LABEL[form.role]} account created`);
     } catch (err) {
       toast.error(AUTH_ERRORS[err.code] || friendlyError(err), { duration: 6000 });
     } finally { setBusy(false); }
   };
 
   const loginUrl = `${window.location.origin}/login`;
-  const credText = created && `Your Super Admin account for the CRM is ready.\n\nLogin: ${loginUrl}\nEmail: ${created.email}\nTemporary password: ${created.password}\n\nPlease change your password after signing in (My account → Change password).`;
+  const credText = created && `Your ${ROLE_LABEL[created.role]} account for the CRM is ready.\n\nLogin: ${loginUrl}\nEmail: ${created.email}\nTemporary password: ${created.password}\n\nPlease change your password after signing in (My account → Change password).`;
 
   return (
     <Card>
-      <CardHeader title="Add a super admin" subtitle="Creates a login with full access, including this dashboard." />
+      <CardHeader title="Add an admin" subtitle="Only Super Admins can create Admins. Choose the role, then set their login." />
       {created && (
         <div className="mx-5 mt-5 rounded-lg border border-emerald-200 bg-emerald-50/60 p-4">
           <p className="flex items-center gap-2 text-[13px] font-medium text-emerald-900"><Check className="h-4 w-4" />Account created. Share these details privately. The password is shown only once.</p>
@@ -70,6 +71,21 @@ function AddSuperAdmin({ profile }) {
         </div>
       )}
       <form onSubmit={submit} className="space-y-4 p-5">
+        <Field label="Role">
+          <div className="grid grid-cols-2 gap-2">
+            {[['admin', ShieldCheck, 'Admin', 'Runs the CRM day to day: uploads contact sheets, manages the team'],
+              ['superadmin', Crown, 'Super Admin', 'Owner access: creates and manages Admins']].map(([value, Icon, label, hint]) => {
+              const on = form.role === value;
+              return (
+                <button key={value} type="button" onClick={() => set('role')(value)} aria-pressed={on}
+                  className={cn('rounded-xl border p-3 text-left transition-all', on ? 'border-brand-500 bg-brand-50/60 ring-2 ring-brand-500/20' : 'border-slate-200 hover:border-slate-300')}>
+                  <span className="flex items-center gap-2 text-[13px] font-bold text-slate-900"><Icon className={cn('h-4 w-4', on ? 'text-brand-600' : 'text-slate-400')} />{label}</span>
+                  <span className="mt-1 block text-[11.5px] leading-snug text-slate-500">{hint}</span>
+                </button>
+              );
+            })}
+          </div>
+        </Field>
         <Field label="Email" error={form.email && !emailOk ? 'Enter a valid email address' : null}>
           <Input required type="email" value={form.email} onChange={set('email')} placeholder="owner@company.com" autoComplete="off" />
         </Field>
@@ -81,18 +97,20 @@ function AddSuperAdmin({ profile }) {
         </Field>
         <p className="flex items-start gap-2 text-xs text-slate-500"><KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0" />They'll be reminded to change this password after their first sign-in.</p>
         <div className="flex justify-end">
-          <Button type="submit" icon={UserPlus} loading={busy} disabled={!valid}>Create super admin</Button>
+          <Button type="submit" icon={UserPlus} loading={busy} disabled={!valid}>Create {ROLE_LABEL[form.role].toLowerCase()}</Button>
         </div>
       </form>
     </Card>
   );
 }
 
-function SuperAdminRow({ u, me, activeCount, profile }) {
+function LeaderRow({ u, me, activeCount, profile }) {
   const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
   const isMe = u.id === me;
-  const lastOne = u.active && activeCount <= 1;
+  const isSuper = u.role === 'superadmin';
+  // At least one active Super Admin must remain.
+  const lastOne = isSuper && u.active && activeCount <= 1;
 
   const run = async (patch, opts) => {
     if (!(await confirm(opts))) return;
@@ -131,11 +149,18 @@ function SuperAdminRow({ u, me, activeCount, profile }) {
       </div>
       {!isMe && (
         <div className="flex gap-1">
-          <Button size="xs" variant="ghost" icon={ShieldOff} disabled={busy || lastOne}
-            title={lastOne ? 'There must be at least one active super admin' : undefined}
-            onClick={() => run({ role: 'admin', superAdminRevoked: true }, { title: `Make ${u.name} a regular admin?`, message: 'They keep admin access but lose the Super Admin dashboard.', confirmLabel: 'Change to admin' })}>
-            Make admin
-          </Button>
+          {isSuper ? (
+            <Button size="xs" variant="ghost" icon={ShieldOff} disabled={busy || lastOne}
+              title={lastOne ? 'There must be at least one active super admin' : undefined}
+              onClick={() => run({ role: 'admin', superAdminRevoked: true }, { title: `Make ${u.name} an Admin?`, message: 'They become a regular Admin and lose the Super Admin dashboard.', confirmLabel: 'Change to admin' })}>
+              Make admin
+            </Button>
+          ) : (
+            <Button size="xs" variant="ghost" icon={ShieldPlus} disabled={busy}
+              onClick={() => run({ role: 'superadmin', superAdminRevoked: false }, { title: `Make ${u.name} a Super Admin?`, message: 'They get owner access, including creating and managing Admins.', confirmLabel: 'Make super admin' })}>
+              Make super admin
+            </Button>
+          )}
           {u.active ? (
             <Button size="xs" variant="ghost" icon={UserX} disabled={busy || lastOne}
               onClick={() => run({ active: false }, { title: `Disable ${u.name}?`, message: 'They will no longer be able to use the CRM until re-enabled.', confirmLabel: 'Disable', danger: true })}>
@@ -143,7 +168,7 @@ function SuperAdminRow({ u, me, activeCount, profile }) {
             </Button>
           ) : (
             <Button size="xs" variant="subtle" icon={UserCheck} disabled={busy}
-              onClick={() => run({ active: true }, { title: `Enable ${u.name}?`, message: 'They will be able to sign in again with full access.', confirmLabel: 'Enable' })}>
+              onClick={() => run({ active: true }, { title: `Enable ${u.name}?`, message: 'They will be able to sign in again.', confirmLabel: 'Enable' })}>
               Enable
             </Button>
           )}
@@ -178,6 +203,7 @@ export default function SuperAdmin() {
 
   const supers = users.filter((u) => u.role === 'superadmin');
   const activeSupers = supers.filter((u) => u.active).length;
+  const admins = users.filter((u) => u.role === 'admin');
 
   if (loading) return <PageLoader />;
 
@@ -196,7 +222,7 @@ export default function SuperAdmin() {
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-200">Owner console</p>
               <h1 className="mt-0.5 text-[28px] font-extrabold leading-tight tracking-tight">Super Admin</h1>
               <p className="mt-1 max-w-xl text-[13.5px] leading-relaxed text-white/75">
-                Welcome back, {profile.name?.split(' ')[0] || 'there'}. Overview of everyone in the CRM, and the place to add or manage other super admins.
+                Welcome back, {profile.name?.split(' ')[0] || 'there'}. Overview of everyone in the CRM, and the place to create and manage Admins and Super Admins.
               </p>
             </div>
           </div>
@@ -225,10 +251,19 @@ export default function SuperAdmin() {
       <div className="grid gap-6 xl:grid-cols-3">
         <div className="space-y-6 xl:col-span-2">
           <Card>
-            <CardHeader title={`Super admins (${supers.length})`} subtitle="Super admins can do everything an admin can, plus manage this page. At least one must stay active." />
+            <CardHeader title={<span className="flex items-center gap-2"><Crown className="h-4 w-4 text-amber-500" />Super Admins ({supers.length})</span>} subtitle="Owners of the CRM. They create and manage Admins. At least one must stay active." />
             {supers.length === 0 ? <EmptyState icon={Crown} title="No super admins yet" /> : (
               <div className="divide-y divide-slate-100">
-                {supers.map((u) => <SuperAdminRow key={u.id} u={u} me={profile.id} activeCount={activeSupers} profile={profile} />)}
+                {supers.map((u) => <LeaderRow key={u.id} u={u} me={profile.id} activeCount={activeSupers} profile={profile} />)}
+              </div>
+            )}
+          </Card>
+
+          <Card>
+            <CardHeader title={<span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-brand-500" />Admins ({admins.length})</span>} subtitle="Run the CRM day to day and receive the zip-code upload tasks. Only Super Admins can add, change or remove them." />
+            {admins.length === 0 ? <EmptyState icon={ShieldCheck} title="No admins yet" message="Create one with the form on the right." /> : (
+              <div className="divide-y divide-slate-100">
+                {admins.map((u) => <LeaderRow key={u.id} u={u} me={profile.id} activeCount={activeSupers} profile={profile} />)}
               </div>
             )}
           </Card>
@@ -249,7 +284,7 @@ export default function SuperAdmin() {
         </div>
 
         <div>
-          <AddSuperAdmin profile={profile} />
+          <AddLeader profile={profile} />
         </div>
       </div>
     </>

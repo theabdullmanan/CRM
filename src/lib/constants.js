@@ -35,9 +35,19 @@ export const ROLE_GROUPS = [
 ];
 
 /** Role picker groups. Only super admins may hand out the Super Admin role. */
+// Only Super Admins create or promote Admins (and other Super Admins).
+// Admins can give every other role, but not Admin.
 export const roleGroupsFor = (isSuperAdmin) => (isSuperAdmin
   ? ROLE_GROUPS.map(([g, roles]) => (g === 'Leadership' ? [g, ['superadmin', ...roles]] : [g, roles]))
-  : ROLE_GROUPS);
+  : ROLE_GROUPS.map(([g, roles]) => [g, roles.filter((r) => r !== 'admin')]));
+
+/** Flat list of roles the signed-in user may hand out. */
+export const assignableFor = (isSuperAdmin) => (isSuperAdmin
+  ? ['superadmin', ...ASSIGNABLE_ROLES]
+  : ASSIGNABLE_ROLES.filter((r) => r !== 'admin'));
+
+/** Roles only a Super Admin may create, edit or remove. */
+export const PROTECTED_ROLES = ['superadmin', 'admin'];
 
 // Built-in departments: always offered in department pickers, each run by a manager.
 // More can be added in Settings.
