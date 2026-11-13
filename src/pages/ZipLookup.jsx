@@ -129,7 +129,7 @@ export default function ZipLookup() {
               const on = sheetSet.includes(k);
               return (
                 <button key={k} onClick={() => setSheetSet((s) => (on ? s.filter((x) => x !== k) : [...s, k]))}
-                  className={cn('inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[12px] transition-colors', on ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300')}>
+                  className={cn('inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[12px] transition-colors', on ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300')}>
                   <span className="h-1.5 w-1.5 rounded-full" style={{ background: m.pin }} />{m.label}<span className={cn('font-mono', on ? 'text-white/70' : 'text-slate-400')}>{num(n)}</span>
                 </button>
               );

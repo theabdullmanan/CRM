@@ -121,7 +121,7 @@ export function SubAccountDrawer({ row: r, owners, onClose }) {
     <AnimatePresence>
       {r && (
         <div className="fixed inset-0 z-50">
-          <motion.div className="absolute inset-0 bg-slate-950/40" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
+          <motion.div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
           <motion.aside
             className="absolute inset-y-0 right-0 flex w-full max-w-[480px] flex-col bg-white shadow-pop"
             initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ duration: 0.28, ease }}

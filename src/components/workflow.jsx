@@ -42,7 +42,7 @@ function Steps({ job }) {
         <li key={s.label} className="relative">
           <div className="flex items-center gap-2">
             <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold',
-              s.done ? 'bg-up text-white' : i === current ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-400')}>
+              s.done ? 'bg-up text-white' : i === current ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-400')}>
               {s.done ? <Check className="h-3 w-3" /> : i + 1}
             </span>
             {i < 2 && <span className={cn('h-px flex-1', s.done ? 'bg-up/50' : 'bg-slate-200')} />}

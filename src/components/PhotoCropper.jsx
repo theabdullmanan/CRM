@@ -90,7 +90,7 @@ export function PhotoCropper({ file, onCancel, onSave, saving }) {
     >
       <div className="flex flex-col items-center gap-5">
         <div
-          className="relative cursor-grab touch-none select-none overflow-hidden rounded-lg bg-slate-900 active:cursor-grabbing"
+          className="theme-fixed relative cursor-grab touch-none select-none overflow-hidden rounded-lg bg-slate-900 active:cursor-grabbing"
           style={{ width: VIEW, height: VIEW }}
           onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
           onWheel={onWheel}

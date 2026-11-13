@@ -88,10 +88,10 @@ export default function Account() {
             <button type="button" onClick={() => fileRef.current?.click()} disabled={savingPhoto} title="Choose a photo from your gallery"
               className="group relative rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2">
               <Avatar name={profile?.name} src={profile?.photoURL} size="xl" />
-              <span className="absolute inset-0 flex items-center justify-center rounded-full bg-slate-950/45 text-white opacity-0 transition-opacity group-hover:opacity-100">
+              <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/45 text-white opacity-0 transition-opacity group-hover:opacity-100">
                 {savingPhoto ? <Loader2 className="h-6 w-6 animate-spin" /> : <Camera className="h-6 w-6" />}
               </span>
-              <span className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-slate-900 text-white shadow">
+              <span className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-brand-600 text-white shadow dark:border-slate-100">
                 <Camera className="h-3.5 w-3.5" />
               </span>
             </button>

@@ -10,7 +10,7 @@ import { useActiveUsers } from '../hooks/useData';
 export function ClientFormModal({ open, onClose, client, onSaved }) {
   const { profile, settings } = useAuth();
   const { data: users } = useActiveUsers();
-  const csms = users.filter((u) => ['csm', 'manager', 'admin'].includes(u.role));
+  const csms = users.filter((u) => ['csm', 'manager', 'admin', 'superadmin'].includes(u.role));
   const [form, setForm] = useState({});
   const [busy, setBusy] = useState(false);
 

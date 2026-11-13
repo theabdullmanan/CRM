@@ -1,7 +1,7 @@
 rules_version = '2';
 
 // Role-based access for the Ops CRM + the original Agency Stats dashboard.
-// Roles: admin, manager, csm, ops, data (CJ), finance, developer, backend_developer,
+// Roles: superadmin, admin, manager, csm, ops, data (CJ), finance, developer, backend_developer,
 //        frontend_developer, designer, qa, sales, support, marketing, hr, pending
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -11,8 +11,11 @@ service cloud.firestore {
     function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
     function active() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && me().active == true; }
     function role() { return me().role; }
-    function hasRole(roles) { return active() && role() in roles; }
+    // A super admin passes every check an admin passes.
+    function hasRole(roles) { return active() && (role() in roles || (role() == 'superadmin' && 'admin' in roles)); }
     function isAdmin() { return hasRole(['admin']); }
+    function isSuperAdmin() { return active() && role() == 'superadmin'; }
+    function bootstrapOwner() { return signedIn() && exists(/databases/$(database)/documents/meta/bootstrap) && get(/databases/$(database)/documents/meta/bootstrap).data.adminUid == request.auth.uid; }
     function leadership() { return hasRole(['admin', 'manager']); }
     function onlyChanges(fields) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields); }
 
@@ -38,18 +41,28 @@ service cloud.firestore {
       allow read: if active() || (signedIn() && request.auth.uid == uid);
 
       // Admins create accounts for team members from the "Add user" page.
-      allow create: if isAdmin() || (signedIn() && request.auth.uid == uid && (
+      // Only super admins can create other super admins (Super Admin dashboard).
+      allow create: if isSuperAdmin()
+        || (isAdmin() && request.resource.data.role != 'superadmin')
+        || (signedIn() && request.auth.uid == uid && (
         // normal sign-up: waits for admin approval
         (request.resource.data.role == 'pending' && request.resource.data.active == false)
         // first-ever account: becomes admin in the same batch that creates meta/bootstrap
-        || (request.resource.data.role == 'admin'
+        || (request.resource.data.role in ['admin', 'superadmin']
             && !exists(/databases/$(database)/documents/meta/bootstrap)
             && getAfter(/databases/$(database)/documents/meta/bootstrap).data.adminUid == request.auth.uid)
       ));
 
-      allow update: if isAdmin()
+      allow update: if isSuperAdmin()
+        // admins can't touch super admins or promote anyone to super admin
+        || (isAdmin() && resource.data.role != 'superadmin' && request.resource.data.role != 'superadmin'
+            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['superAdminRevoked']))
+        // existing installs: the original owner claims super admin once
+        || (signedIn() && request.auth.uid == uid && bootstrapOwner() && active()
+            && resource.data.role == 'admin' && resource.data.get('superAdminRevoked', false) == false
+            && request.resource.data.role == 'superadmin' && onlyChanges(['role']))
         || (signedIn() && request.auth.uid == uid && onlyChanges(['name', 'phone', 'title', 'photoURL', 'lastSeenAt', 'mustChangePassword', 'passwordChangedAt']));
-      allow delete: if isAdmin();
+      allow delete: if isSuperAdmin() || (isAdmin() && resource.data.role != 'superadmin');
     }
 
     // ---------- configuration ----------

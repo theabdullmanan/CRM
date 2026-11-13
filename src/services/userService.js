@@ -3,7 +3,7 @@ import {
   createUserWithEmailAndPassword, EmailAuthProvider, getAuth, inMemoryPersistence, reauthenticateWithCredential,
   setPersistence, signOut, updatePassword, updateProfile,
 } from 'firebase/auth';
-import { doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import { deleteDoc, doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { app, auth, db } from '../lib/firebase';
 import { ROLES } from '../lib/constants';
 import { logActivity, notifyUsers } from './notifications';
@@ -54,6 +54,33 @@ export async function createUserAccount({ name, email, password, role, departmen
     await signOut(tempAuth).catch(() => {});
     await deleteApp(secondary).catch(() => {});
   }
+}
+
+/** Super admin creates another super admin login (email + starting password). */
+export function createSuperAdminAccount({ name, email, password }, superAdmin) {
+  const displayName = name?.trim() || email.trim().split('@')[0];
+  return createUserAccount(
+    { name: displayName, email, password, role: 'superadmin', department: 'Management', jobTitle: 'Super Admin' },
+    superAdmin,
+  );
+}
+
+/** Super admin changes another super admin's role (e.g. demote to admin) or enables/disables them. */
+export async function updateSuperAdmin(target, patch, superAdmin) {
+  if (!db) throw new Error('Preview mode — connect Firebase to save changes.');
+  await updateDoc(doc(db, 'users', target.id), patch);
+  logActivity(superAdmin, 'superadmin.update', { name: target.name, ...patch });
+}
+
+/**
+ * Admin / super admin deletes a user: removes their profile, so they lose all access at once.
+ * Their sign-in (email + password) can only be removed from the server side, so it stays in
+ * Firebase Authentication until deleted there; signing in just shows "Account removed".
+ */
+export async function deleteUserAccount(target, actor) {
+  if (!db) throw new Error('Preview mode — connect Firebase to delete accounts.');
+  await deleteDoc(doc(db, 'users', target.id));
+  logActivity(actor, 'user.delete', { name: target.name, email: target.email, role: target.role });
 }
 
 /** Signed-in user changes their own password (Firebase requires the current one first). */

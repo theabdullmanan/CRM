@@ -4,6 +4,7 @@ import { db } from '../lib/firebase';
 import { previewDb as P } from '../lib/preview';
 import { useCollection } from './useFirestore';
 import { useAuth } from '../contexts/AuthContext';
+import { DEFAULT_DEPARTMENTS } from '../lib/constants';
 
 const byName = (a, b) => (a.name || '').localeCompare(b.name || '');
 
@@ -27,7 +28,10 @@ export function useActiveUsers() {
 
 export function useDepartments() {
   const res = useCollection(() => collection(db, 'departments'), [], () => P.departments);
-  return { ...res, data: [...res.data].sort(byName) };
+  // Built-in departments first (in their set order), then any added in Settings.
+  const builtIn = DEFAULT_DEPARTMENTS.map((name) => ({ id: `builtin-${name}`, name, builtIn: true }));
+  const custom = res.data.filter((d) => !DEFAULT_DEPARTMENTS.some((n) => n.toLowerCase() === d.name?.toLowerCase())).sort(byName);
+  return { ...res, data: [...builtIn, ...custom] };
 }
 
 export function useClients() {

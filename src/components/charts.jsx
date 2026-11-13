@@ -7,8 +7,8 @@ import { money } from '../lib/utils';
 // Market palette (TradingView-style): gains / losses / neutral ink.
 export const UP = '#089981';
 export const DOWN = '#f23645';
-const INK = '#a1a1aa';
-const GRID = '#f1f1f3';
+const INK = 'rgb(var(--n-400))';
+const GRID = 'rgb(var(--n-100))';
 const tick = { fontSize: 10.5, fill: INK, fontFamily: '"JetBrains Mono", ui-monospace, monospace' };
 
 export const compact = (v) => {
@@ -34,7 +34,7 @@ function Change({ cur, prev }) {
 /** Dark, terminal-style tooltip shared by every market chart. */
 function Tip({ title, rows }) {
   return (
-    <div className="min-w-[180px] rounded-md border border-white/10 bg-[#111114]/95 px-3 py-2.5 font-mono text-[11px] leading-5 text-slate-300 shadow-pop backdrop-blur">
+    <div className="theme-fixed min-w-[180px] rounded-md border border-white/10 bg-[#111114]/95 px-3 py-2.5 font-mono text-[11px] leading-5 text-slate-300 shadow-pop backdrop-blur">
       <p className="mb-1 font-sans text-[11px] font-medium text-slate-400">{title}</p>
       {rows.map(([k, v]) => (
         <div key={k} className="flex justify-between gap-6">
@@ -106,7 +106,7 @@ export function PriceChart({ data, height = 300, volume = true, showMA = true })
             <Tooltip content={tooltip} cursor={{ stroke: '#71717a', strokeWidth: 1, strokeDasharray: '3 3' }} isAnimationActive={false} />
             <Area
               type="linear" dataKey="spend" stroke={color} strokeWidth={1.75} fill={`url(#pf${id})`}
-              activeDot={{ r: 4, fill: color, stroke: '#fff', strokeWidth: 2 }} animationDuration={900}
+              activeDot={{ r: 4, fill: color, stroke: 'rgb(var(--surface))', strokeWidth: 2 }} animationDuration={900}
             />
             {showMA && <Line type="monotone" dataKey="ma7" stroke="#a1a1aa" strokeWidth={1.25} strokeDasharray="4 3" dot={false} activeDot={false} animationDuration={900} />}
             <ReferenceLine y={last} stroke={color} strokeDasharray="2 3" strokeOpacity={0.7} label={<LastTag value={last} color={color} />} ifOverflow="extendDomain" />
@@ -199,7 +199,7 @@ export function RankBars({ rows, height = 300 }) {
         <BarChart data={rows} layout="vertical" margin={{ left: 4, right: 16, top: 4, bottom: 0 }} barCategoryGap={7}>
           <CartesianGrid horizontal={false} stroke={GRID} />
           <XAxis type="number" tick={tick} tickLine={false} axisLine={false} tickFormatter={compact} />
-          <YAxis type="category" dataKey="clientName" tick={{ ...tick, fill: '#52525b', fontFamily: 'Inter, sans-serif', fontSize: 11.5 }} tickLine={false} axisLine={false} width={150} interval={0} />
+          <YAxis type="category" dataKey="clientName" tick={{ ...tick, fill: 'rgb(var(--n-600))', fontFamily: 'Inter, sans-serif', fontSize: 11.5 }} tickLine={false} axisLine={false} width={150} interval={0} />
           <Tooltip
             isAnimationActive={false}
             cursor={{ fill: 'rgba(113,113,122,.07)' }}

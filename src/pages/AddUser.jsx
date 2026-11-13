@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { ArrowLeft, Check, CheckCircle2, Copy, KeyRound, LogIn, ShieldCheck, UserPlus, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useDepartments } from '../hooks/useData';
-import { ACCESS, ROLE_GROUPS, ROLES } from '../lib/constants';
+import { ACCESS, ROLES, roleGroupsFor } from '../lib/constants';
 import { cn, friendlyError } from '../lib/utils';
 import { createUserAccount, passwordStrength } from '../services/userService';
 import { NAV } from '../components/layout/Layout';
@@ -27,7 +27,7 @@ function pagesFor(role) {
 }
 
 export default function AddUser() {
-  const { profile } = useAuth();
+  const { profile, isSuperAdmin } = useAuth();
   const { data: departments } = useDepartments();
   const [form, setForm] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
@@ -112,7 +112,7 @@ export default function AddUser() {
             <div className="grid gap-4 p-5 sm:grid-cols-2">
               <Field label="Role">
                 <Select value={form.role} onChange={set('role')}>
-                  {ROLE_GROUPS.map(([group, roles]) => (
+                  {roleGroupsFor(isSuperAdmin).map(([group, roles]) => (
                     <optgroup key={group} label={group}>
                       {roles.map((r) => <option key={r} value={r}>{ROLES[r].label}</option>)}
                     </optgroup>

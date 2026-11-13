@@ -99,7 +99,7 @@ export default function MapDashboard() {
         subtitle={`${num(onMap)} sub-accounts on the map${list.length - onMap ? ` · ${num(list.length - onMap)} without a zip location` : ''}. One pin per sub-account, at the first zip in its onboarding form.`}
         actions={<LiveStatus agency={agency} />}
       />
-      <div className={cn(full && 'fixed inset-0 z-50 flex flex-col bg-[#f7f7f8] p-3')}>
+      <div className={cn(full && 'fixed inset-0 z-50 flex flex-col bg-[#f7f7f8] p-3 dark:bg-[#0b0e17]')}>
         <Card className={cn('overflow-hidden', full && 'flex flex-1 flex-col')}>
           <div className="space-y-3 border-b border-slate-100 p-4">
             <div className="flex flex-wrap items-center gap-2">
@@ -118,7 +118,7 @@ export default function MapDashboard() {
                 const on = sheetSet.includes(k);
                 return (
                   <button key={k} onClick={() => setSheetSet((s) => (on ? s.filter((x) => x !== k) : [...s, k]))}
-                    className={cn('inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[12px] transition-colors', on ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300')}>
+                    className={cn('inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[12px] transition-colors', on ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300')}>
                     <span className="h-1.5 w-1.5 rounded-full" style={{ background: m.pin }} />{m.label}<span className={cn('font-mono', on ? 'text-white/70' : 'text-slate-400')}>{num(n)}</span>
                   </button>
                 );

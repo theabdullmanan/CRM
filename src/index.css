@@ -9,8 +9,17 @@
     text-rendering: optimizeLegibility;
     font-feature-settings: 'cv11', 'ss01', 'ss03';
   }
-  body { @apply bg-[#f7f7f8] text-slate-800; }
-  ::selection { background: rgb(61 110 242 / 0.18); }
+  body {
+    @apply bg-[#f5f6fa] text-slate-800 transition-colors duration-300 dark:bg-[#0b0e17];
+    /* Soft brand glow at the top of every page */
+    background-image:
+      radial-gradient(900px 420px at 85% -120px, rgb(99 102 241 / 0.10), transparent 70%),
+      radial-gradient(700px 360px at 20% -160px, rgb(168 85 247 / 0.07), transparent 70%);
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+  }
+  h1, h2, h3 { @apply font-display; }
+  ::selection { background: rgb(99 102 241 / 0.2); }
   :focus-visible { outline: none; }
   .tabular-nums, .font-mono { font-variant-numeric: tabular-nums; }
 }
@@ -37,10 +46,20 @@
     animation: shimmer 1.6s ease-in-out infinite;
   }
 
-  .glass { @apply bg-white/85 backdrop-blur-md backdrop-saturate-150; }
+  .glass { @apply bg-white/75 backdrop-blur-xl backdrop-saturate-150; }
 
   /* Small uppercase label used above figures */
-  .eyebrow { @apply text-[11px] font-medium uppercase tracking-[0.08em] text-slate-500; }
+  .eyebrow { @apply text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500; }
+
+  /* Brand gradient text and fills */
+  .text-gradient { @apply bg-gradient-to-r from-brand-600 via-violet-600 to-fuchsia-500 bg-clip-text text-transparent; }
+  .bg-brand-gradient { @apply bg-gradient-to-br from-brand-500 via-brand-600 to-violet-600; }
+
+  /* Subtle dotted texture for hero panels */
+  .bg-dots {
+    background-image: radial-gradient(rgb(255 255 255 / 0.12) 1px, transparent 1px);
+    background-size: 18px 18px;
+  }
 }
 
 @layer utilities {
@@ -77,3 +96,47 @@
 .crm-pop-user a { color: #2856e0; text-decoration: none; }
 .crm-pop-user.muted { color: #a1a1aa; }
 .crm-pop-tag { display: inline-block; margin-top: 3px; font-size: 10.5px; font-weight: 500; color: #3f3f46; background: #f4f4f5; border-radius: 4px; padding: 1px 6px; }
+
+/* ---------- Dark theme refinements ---------- */
+.dark .skeleton {
+  background-color: rgb(var(--n-100));
+  background-image: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.05), transparent);
+}
+.dark .scrollbar-thin::-webkit-scrollbar-thumb { background: rgb(255 255 255 / 0.12); }
+
+/* Users map: night-style tiles and dark pop-ups */
+.dark .leaflet-container { background: #0b0e17; }
+.dark .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.6); }
+.dark .leaflet-popup-content-wrapper, .dark .leaflet-popup-tip { background: rgb(var(--surface)); color: rgb(var(--n-800)); }
+.dark .leaflet-control-zoom a, .dark .leaflet-control-attribution { background: rgb(var(--surface)) !important; color: rgb(var(--n-600)) !important; border-color: rgb(var(--n-200)) !important; }
+.dark .leaflet-control-attribution a { color: rgb(var(--b-700)); }
+.dark .crm-pop-acct { border-color: rgb(var(--n-200)); }
+.dark .crm-pop-acct > a { color: rgb(var(--n-900)); }
+.dark .crm-pop-acct > a:hover, .dark .crm-pop-user a { color: rgb(var(--b-700)); }
+.dark .crm-pop-user b { color: rgb(var(--n-700)); }
+.dark .crm-pop-zip, .dark .crm-pop-user.muted { color: rgb(var(--n-500)); }
+.dark .crm-pop-tag { background: rgb(var(--n-100)); color: rgb(var(--n-700)); }
+
+/* ---------- Sidebar gradient on cards and the top bar ----------
+   Dark: the same deep-navy gradient and purple glow as the sidebar.
+   Light: a soft white-to-indigo version of it, so light mode stays light. */
+.surface-gradient {
+  background-image:
+    radial-gradient(120% 90% at 0% 0%, rgb(99 102 241 / 0.07), transparent 55%),
+    linear-gradient(180deg, #ffffff 0%, #fbfbff 55%, #f6f6ff 100%);
+}
+.dark .surface-gradient {
+  background-image:
+    radial-gradient(120% 90% at 0% 0%, rgb(80 70 229 / 0.20), transparent 55%),
+    radial-gradient(90% 70% at 100% 100%, rgb(124 58 237 / 0.08), transparent 60%),
+    linear-gradient(180deg, #12142a 0%, #0d0f1f 60%, #0a0b16 100%);
+}
+
+.navbar-gradient {
+  background-image: linear-gradient(90deg, rgb(255 255 255 / 0.85) 0%, rgb(250 250 255 / 0.8) 60%, rgb(244 243 255 / 0.8) 100%);
+}
+.dark .navbar-gradient {
+  background-image:
+    radial-gradient(60% 140% at 0% 0%, rgb(80 70 229 / 0.22), transparent 70%),
+    linear-gradient(90deg, rgb(18 20 42 / 0.92) 0%, rgb(13 15 31 / 0.9) 60%, rgb(10 11 22 / 0.9) 100%);
+}

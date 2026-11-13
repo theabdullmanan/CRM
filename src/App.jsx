@@ -22,6 +22,7 @@ const Tasks = lazy(() => import('./pages/Tasks'));
 const Team = lazy(() => import('./pages/Team'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Notifications = lazy(() => import('./pages/Notifications'));
+const SuperAdmin = lazy(() => import('./pages/SuperAdmin'));
 
 function FullScreenLoader() {
   return <div className="flex min-h-screen items-center justify-center"><PageLoader /></div>;
@@ -73,6 +74,7 @@ export default function App() {
                 <Route path="team/add" element={<Guard area="team"><AddUser /></Guard>} />
                 <Route path="account" element={<Account />} />
                 <Route path="settings" element={<Guard area="settings"><Settings /></Guard>} />
+                <Route path="super-admin" element={<Guard area="superAdmin"><SuperAdmin /></Guard>} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>

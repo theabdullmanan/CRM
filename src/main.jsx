@@ -20,8 +20,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
               position="top-right"
               toastOptions={{
                 style: {
-                  fontSize: 14, borderRadius: 12, padding: '10px 14px', color: '#0f172a',
-                  boxShadow: '0 12px 32px -12px rgba(16,24,40,.25), 0 0 0 1px rgba(15,23,42,.06)',
+                  fontSize: 14, borderRadius: 12, padding: '10px 14px',
+                  background: 'rgb(var(--surface))', color: 'rgb(var(--n-900))',
+                  boxShadow: '0 12px 32px -12px rgba(16,24,40,.25), 0 0 0 1px rgb(var(--n-200))',
                 },
               }}
             />

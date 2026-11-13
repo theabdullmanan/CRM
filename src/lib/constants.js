@@ -1,6 +1,7 @@
 // Roles control what a user can see and do. Departments (from Sergio's list) are
 // managed separately in Settings and are attached to users for grouping/reporting.
 export const ROLES = {
+  superadmin: { label: 'Super Admin', color: 'violet', description: 'Everything an admin can do, plus the Super Admin dashboard and managing other super admins' },
   admin: { label: 'Admin', color: 'violet', description: 'Full access, including revenue & spend, users and settings' },
   manager: { label: 'Manager', color: 'indigo', description: 'All departments and team progress' },
   csm: { label: 'CSM', color: 'sky', description: 'Clients, sub-accounts, zip code submissions' },
@@ -33,8 +34,18 @@ export const ROLE_GROUPS = [
   ['Staff', STAFF],
 ];
 
+/** Role picker groups. Only super admins may hand out the Super Admin role. */
+export const roleGroupsFor = (isSuperAdmin) => (isSuperAdmin
+  ? ROLE_GROUPS.map(([g, roles]) => (g === 'Leadership' ? [g, ['superadmin', ...roles]] : [g, roles]))
+  : ROLE_GROUPS);
+
+// Built-in departments: always offered in department pickers, each run by a manager.
+// More can be added in Settings.
+export const DEFAULT_DEPARTMENTS = ['Sending Department', 'Operations Department', 'Client Success Department'];
+
 // Which roles can open which section of the app.
-export const ACCESS = {
+// Super admins get every area an admin has (added below), plus `superAdmin`.
+const BASE_ACCESS = {
   dashboard: ['admin', 'manager', 'csm', 'ops', 'data', 'finance', ...TECH, ...STAFF],
   clients: ['admin', 'manager', 'csm', 'ops', 'finance'],
   clientsEdit: ['admin', 'manager', 'csm'],
@@ -51,6 +62,15 @@ export const ACCESS = {
   team: ['admin'],
   settings: ['admin'],
 };
+
+export const ACCESS = {
+  ...Object.fromEntries(Object.entries(BASE_ACCESS).map(([area, roles]) => [area, roles.includes('admin') ? ['superadmin', ...roles] : roles])),
+  superAdmin: ['superadmin'],
+};
+
+/** Roles with admin powers. Super admins can do everything an admin can. */
+export const ADMIN_ROLES = ['superadmin', 'admin'];
+export const isAdminRole = (role) => ADMIN_ROLES.includes(role);
 
 export const can = (role, area) => Boolean(role && ACCESS[area]?.includes(role));
 

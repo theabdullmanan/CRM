@@ -60,7 +60,7 @@ export async function updateTask(task, changes, profile) {
       type: 'success',
     };
     await Promise.all([
-      notifyRoles(['admin', 'manager'], payload, { exclude: [profile.id] }),
+      notifyRoles(['superadmin', 'admin', 'manager'], payload, { exclude: [profile.id] }),
       task.createdBy !== profile.id ? notifyUsers([task.createdBy], payload) : null,
     ]).catch(() => {});
     logActivity(profile, 'task.done', { title: task.title, late });
@@ -94,7 +94,7 @@ export async function flagOverdueTasks(tasks) {
         type: 'overdue',
       };
       await notifyUsers(t.pool ? [...(t.assigneeIds || [])] : [t.assigneeId, t.createdBy], payload);
-      await notifyRoles(['admin'], payload, { exclude: [t.assigneeId, t.createdBy] });
+      await notifyRoles(['superadmin', 'admin'], payload, { exclude: [t.assigneeId, t.createdBy] });
     } catch (e) {
       // Another session may have already flagged it — safe to ignore.
     }

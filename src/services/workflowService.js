@@ -16,6 +16,7 @@ import {
 } from 'firebase/firestore';
 import Papa from 'papaparse';
 import { db } from '../lib/firebase';
+import { ADMIN_ROLES } from '../lib/constants';
 import { logActivity, notifyUsers } from './notifications';
 
 export const WORKFLOW_KIND = 'zip_workflow';
@@ -29,8 +30,9 @@ function preview() {
   if (!db) throw new Error('Preview mode — connect Firebase to run the workflow.');
 }
 
-async function activeIds(role) {
-  const snap = await getDocs(query(collection(db, 'users'), where('role', '==', role)));
+async function activeIds(roles) {
+  const list = Array.isArray(roles) ? roles : [roles];
+  const snap = await getDocs(query(collection(db, 'users'), where('role', 'in', list)));
   return snap.docs.filter((d) => d.data().active).map((d) => d.id);
 }
 
@@ -43,7 +45,7 @@ export async function startZipWorkflow({ results, client, subAccount, profile })
   const zips = results.filter((r) => r.status === 'pending').map((r) => r.zip);
   if (!zips.length) return null;
 
-  const adminIds = await activeIds('admin');
+  const adminIds = await activeIds(ADMIN_ROLES);
   const ref = doc(collection(db, 'tasks'));
   const task = {
     kind: WORKFLOW_KIND,
@@ -183,7 +185,7 @@ export async function completePoolTask(task, profile) {
   });
 
   const others = (task.assigneeIds || []).filter((id) => id !== profile.id);
-  const adminIds = await activeIds('admin').catch(() => []);
+  const adminIds = await activeIds(ADMIN_ROLES).catch(() => []);
   await Promise.all([
     notifyUsers(others, {
       title: `${profile.name} completed a shared task`,

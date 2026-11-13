@@ -108,7 +108,9 @@ export default function Settings() {
               {departments.map((d) => (
                 <span key={d.id} className="flex items-center gap-1.5 rounded-full bg-slate-100 py-1 pl-3 pr-1.5 text-sm text-slate-700">
                   {d.name}
-                  <button onClick={() => deleteDoc(doc(db, 'departments', d.id))} className="rounded-full p-0.5 text-slate-400 hover:bg-down-100 hover:text-down-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                  {d.builtIn
+                    ? <span className="pr-1.5 text-[11px] text-slate-400">built-in</span>
+                    : <button onClick={() => deleteDoc(doc(db, 'departments', d.id))} className="rounded-full p-0.5 text-slate-400 hover:bg-down-100 hover:text-down-600"><Trash2 className="h-3.5 w-3.5" /></button>}
                 </span>
               ))}
               {!departments.length && <p className="text-sm text-slate-400">No departments yet.</p>}

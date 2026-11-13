@@ -39,6 +39,8 @@ const ACTION_LABEL = {
   'workflow.upload': (d) => `uploaded the contact sheet for ${d.subAccount} (${Number(d.rows || 0).toLocaleString()} rows)`,
   'workflow.done': (d) => `completed "${d.title}"`,
   'user.create': (d) => `added ${d.name} as ${ROLES[d.role]?.label || d.role}`,
+  'user.delete': (d) => `deleted the account of ${d.name}`,
+  'superadmin.update': (d) => `updated super admin ${d.name}`,
   'user.approve': (d) => `approved ${d.name} as ${ROLES[d.role]?.label || d.role}`,
 };
 
