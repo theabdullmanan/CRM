@@ -16,4 +16,6 @@ export const ACCENTS = [
   { id: 'graphite', label: 'Graphite', palette: 'slate', swatch: ['#64748b', '#334155'] },
 ];
 
-export const isAccent = (id) => ACCENTS.some((a) => a.id === id);
+/** A preset id, or a custom colour saved as '#rrggbb'. */
+export const isCustomAccent = (v) => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
+export const isAccent = (id) => isCustomAccent(id) || ACCENTS.some((a) => a.id === id);

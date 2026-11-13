@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
-import { DEFAULT_ACCENT, isAccent } from './accents';
+import { DEFAULT_ACCENT, isAccent, isCustomAccent } from './accents';
+import { customAccentCss } from './colorScale';
 
 // Appearance: light/dark mode and the accent colour.
 // - Light/dark is remembered per browser (first visit follows the device setting).
@@ -7,6 +8,7 @@ import { DEFAULT_ACCENT, isAccent } from './accents';
 //   the right colours before the profile loads. index.html applies both before React starts.
 const THEME_KEY = 'theme';
 const ACCENT_KEY = 'accent';
+const ACCENT_CSS_KEY = 'accentCss';
 
 const read = (key) => { try { return localStorage.getItem(key); } catch { return null; } };
 const write = (key, v) => { try { if (v == null) localStorage.removeItem(key); else localStorage.setItem(key, v); } catch { /* storage blocked */ } };
@@ -18,15 +20,32 @@ function initialTheme() {
 }
 function initialAccent() {
   const saved = read(ACCENT_KEY);
-  return isAccent(saved) ? saved : DEFAULT_ACCENT;
+  return isAccent(saved) ? (isCustomAccent(saved) ? saved.toLowerCase() : saved) : DEFAULT_ACCENT;
 }
 
 let state = { theme: initialTheme(), accent: initialAccent() };
 const listeners = new Set();
 
+// A custom colour (#rrggbb) is applied as its own small stylesheet of accent variables.
+function applyCustomCss(css) {
+  let tag = document.getElementById('custom-accent');
+  if (!css) { tag?.remove(); return; }
+  if (!tag) { tag = document.createElement('style'); tag.id = 'custom-accent'; document.head.appendChild(tag); }
+  if (tag.textContent !== css) tag.textContent = css;
+}
+
 function apply() {
   const el = document.documentElement;
   el.classList.toggle('dark', state.theme === 'dark');
+  if (isCustomAccent(state.accent)) {
+    const css = customAccentCss(state.accent);
+    applyCustomCss(css);
+    write(ACCENT_CSS_KEY, css); // lets index.html paint the custom colour before React loads
+    el.setAttribute('data-accent', 'custom');
+    return;
+  }
+  applyCustomCss(null);
+  write(ACCENT_CSS_KEY, null);
   if (state.accent === DEFAULT_ACCENT) el.removeAttribute('data-accent');
   else el.setAttribute('data-accent', state.accent);
 }
@@ -43,9 +62,9 @@ export function setTheme(theme) {
   update({ theme });
 }
 
-/** Applies an accent locally. Pass null/undefined/'general' for the default theme. */
+/** Applies an accent locally: a preset id or a custom '#rrggbb'. null/undefined/'general' = default theme. */
 export function setAccent(accent) {
-  const next = isAccent(accent) ? accent : DEFAULT_ACCENT;
+  const next = isAccent(accent) ? (isCustomAccent(accent) ? accent.toLowerCase() : accent) : DEFAULT_ACCENT;
   if (next === state.accent) return;
   write(ACCENT_KEY, next === DEFAULT_ACCENT ? null : next);
   update({ accent: next });
