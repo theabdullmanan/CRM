@@ -38,7 +38,7 @@ function SheetTabs({ value, onChange, counts, total }) {
             className={cn(
               'group inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-[13px] font-semibold transition-all duration-150',
               active
-                ? 'border-brand-500/40 bg-brand-600 text-white shadow-[0_4px_14px_-6px_rgba(80,70,229,.7)]'
+                ? 'border-brand-500/40 bg-brand-600 text-white shadow-[0_4px_14px_-6px_rgb(var(--b-600)/.7)]'
                 : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900',
             )}
           >

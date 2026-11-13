@@ -98,6 +98,12 @@ export async function updateMyProfile(uid, { name, phone }) {
   if (auth.currentUser) await updateProfile(auth.currentUser, { displayName: name.trim() }).catch(() => {});
 }
 
+/** Saves the signed-in user's accent colour (null = the default General theme). */
+export async function updateMyAppearance(uid, { accentColor }) {
+  if (!db) throw new Error('Preview mode — connect Firebase to save changes.');
+  await updateDoc(doc(db, 'users', uid), { accentColor: accentColor || null });
+}
+
 /** Saves (or with null, removes) the signed-in user's profile photo, a small data URL. */
 export async function updateMyPhoto(uid, photoURL) {
   if (!db) throw new Error('Preview mode — connect Firebase to save changes.');

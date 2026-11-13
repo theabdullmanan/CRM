@@ -7,6 +7,7 @@ import { PhotoCropper } from '../components/PhotoCropper';
 import { fmtDate, fmtDateTime, friendlyError } from '../lib/utils';
 import { changeMyPassword, updateMyPhoto, updateMyProfile } from '../services/userService';
 import { PasswordField } from '../components/PasswordField';
+import AppearanceCard from '../components/AppearanceCard';
 import { Avatar, Badge, Button, Card, CardHeader, Field, Input, PageHeader } from '../components/ui';
 
 const PW_ERRORS = {
@@ -72,7 +73,7 @@ export default function Account() {
 
   return (
     <>
-      <PageHeader title="My account" subtitle="Your profile and sign-in details." />
+      <PageHeader title="My account" subtitle="Your profile, sign-in details and how the CRM looks for you." />
 
       {profile?.mustChangePassword && (
         <div className="mb-6 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-[13px] text-amber-900">
@@ -118,6 +119,8 @@ export default function Account() {
         </Card>
 
         <div className="space-y-6 xl:col-span-2">
+          <AppearanceCard />
+
           <Card>
             <CardHeader title="Change password" subtitle="Enter your current password, then choose a new one (at least 8 characters)." />
             <form onSubmit={savePassword} className="grid gap-4 p-5 sm:grid-cols-2">

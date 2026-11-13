@@ -13,13 +13,13 @@
     @apply bg-[#f5f6fa] text-slate-800 transition-colors duration-300 dark:bg-[#0b0e17];
     /* Soft brand glow at the top of every page */
     background-image:
-      radial-gradient(900px 420px at 85% -120px, rgb(99 102 241 / 0.10), transparent 70%),
-      radial-gradient(700px 360px at 20% -160px, rgb(168 85 247 / 0.07), transparent 70%);
+      radial-gradient(900px 420px at 85% -120px, rgb(var(--b-500) / 0.10), transparent 70%),
+      radial-gradient(700px 360px at 20% -160px, rgb(var(--b-400) / 0.07), transparent 70%);
     background-attachment: fixed;
     background-repeat: no-repeat;
   }
   h1, h2, h3 { @apply font-display; }
-  ::selection { background: rgb(99 102 241 / 0.2); }
+  ::selection { background: rgb(var(--b-500) / 0.2); }
   :focus-visible { outline: none; }
   .tabular-nums, .font-mono { font-variant-numeric: tabular-nums; }
 }
@@ -53,7 +53,7 @@
 
   /* Brand gradient text and fills */
   .text-gradient { @apply bg-gradient-to-r from-brand-600 via-violet-600 to-fuchsia-500 bg-clip-text text-transparent; }
-  .bg-brand-gradient { @apply bg-gradient-to-br from-brand-500 via-brand-600 to-violet-600; }
+  .bg-brand-gradient { @apply bg-gradient-to-br from-brand-500 via-brand-600 to-brand-700; }
 
   /* Subtle dotted texture for hero panels */
   .bg-dots {
@@ -122,12 +122,12 @@
    Light: a soft white-to-indigo version of it, so light mode stays light. */
 .surface-gradient {
   background-image:
-    radial-gradient(120% 90% at 0% 0%, rgb(99 102 241 / 0.07), transparent 55%),
+    radial-gradient(120% 90% at 0% 0%, rgb(var(--b-500) / 0.07), transparent 55%),
     linear-gradient(180deg, #ffffff 0%, #fbfbff 55%, #f6f6ff 100%);
 }
 .dark .surface-gradient {
   background-image:
-    radial-gradient(120% 90% at 0% 0%, rgb(80 70 229 / 0.20), transparent 55%),
+    radial-gradient(120% 90% at 0% 0%, rgb(var(--b-500) / 0.20), transparent 55%),
     radial-gradient(90% 70% at 100% 100%, rgb(124 58 237 / 0.08), transparent 60%),
     linear-gradient(180deg, #12142a 0%, #0d0f1f 60%, #0a0b16 100%);
 }
@@ -137,6 +137,6 @@
 }
 .dark .navbar-gradient {
   background-image:
-    radial-gradient(60% 140% at 0% 0%, rgb(80 70 229 / 0.22), transparent 70%),
+    radial-gradient(60% 140% at 0% 0%, rgb(var(--b-500) / 0.22), transparent 70%),
     linear-gradient(90deg, rgb(18 20 42 / 0.92) 0%, rgb(13 15 31 / 0.9) 60%, rgb(10 11 22 / 0.9) 100%);
 }

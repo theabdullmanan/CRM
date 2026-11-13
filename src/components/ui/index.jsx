@@ -10,7 +10,7 @@ const slide = { type: 'tween', ease, duration: 0.28 };
 
 // ---------- Button ----------
 const variants = {
-  primary: 'bg-gradient-to-b from-brand-500 to-brand-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,.18),0_1px_2px_rgba(16,24,40,.12),0_4px_12px_-4px_rgba(80,70,229,.5)] hover:from-brand-600 hover:to-brand-700',
+  primary: 'bg-gradient-to-b from-brand-500 to-brand-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,.18),0_1px_2px_rgba(16,24,40,.12),0_4px_12px_-4px_rgb(var(--b-600)/.5)] hover:from-brand-600 hover:to-brand-700',
   secondary: 'bg-white text-slate-800 border border-slate-200 shadow-[0_1px_2px_rgba(16,24,40,.05)] hover:bg-slate-50 hover:border-slate-300',
   ghost: 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
   danger: 'bg-gradient-to-b from-down to-down-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,.18),0_4px_12px_-4px_rgba(225,29,72,.5)] hover:from-down-600 hover:to-down-700',
@@ -234,7 +234,7 @@ export function PageLoader() {
 export function EmptyState({ icon: Icon = Inbox, title, message, action }) {
   return (
     <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
-      <div className="mb-4 rounded-2xl bg-gradient-to-br from-brand-50 to-violet-50 p-3.5 ring-1 ring-brand-100">
+      <div className="mb-4 rounded-2xl bg-gradient-to-br from-brand-50 to-brand-100 p-3.5 ring-1 ring-brand-100">
         <Icon className="h-6 w-6 text-brand-500 dark:text-brand-700" strokeWidth={1.75} />
       </div>
       <p className="font-display text-[15px] font-bold text-slate-900">{title}</p>
@@ -275,7 +275,7 @@ export function AnimatedNumber({ value }) {
 // ---------- Stat card ----------
 // Icon tile + background glow per tone.
 const TONES = {
-  brand: { tile: 'from-brand-500 to-violet-600 shadow-[0_6px_16px_-6px_rgba(99,102,241,.7)]', glow: 'bg-brand-500' },
+  brand: { tile: 'from-brand-500 to-brand-700 shadow-[0_6px_16px_-6px_rgb(var(--b-500)/.7)]', glow: 'bg-brand-500' },
   emerald: { tile: 'from-emerald-400 to-teal-600 shadow-[0_6px_16px_-6px_rgba(16,185,129,.7)]', glow: 'bg-emerald-500' },
   amber: { tile: 'from-amber-400 to-orange-500 shadow-[0_6px_16px_-6px_rgba(245,158,11,.7)]', glow: 'bg-amber-500' },
   red: { tile: 'from-rose-400 to-red-600 shadow-[0_6px_16px_-6px_rgba(244,63,94,.7)]', glow: 'bg-rose-500' },

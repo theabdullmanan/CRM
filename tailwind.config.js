@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 import defaultColors from 'tailwindcss/colors';
+import { ACCENTS } from './src/lib/accents.js';
 
 // ---------------------------------------------------------------------------
 // Light / dark theme
@@ -68,6 +69,24 @@ function varsFor(mode) {
 
 const ref = (name, keys) => Object.fromEntries(keys.map((k) => [k, `rgb(var(--${name}-${k}) / <alpha-value>)`]));
 
+// Per-user accent presets (My account → Appearance). Each one swaps the `brand` scale.
+// Dark mode uses the deep end of the palette for tints and the light end for text.
+const ACCENT_DARK_MAP = { 50: '950', 100: '900', 200: '800', 300: '700', 400: '500', 500: '500', 600: '400', 700: '300', 800: '200', 900: '100', 950: '50' };
+function accentVars(palette, dark) {
+  const c = defaultColors[palette];
+  return Object.fromEntries(SHADES.map((s) => [`--b-${s}`, hexToRgb(c[dark ? ACCENT_DARK_MAP[s] : s])]));
+}
+function accentRules() {
+  const rules = {};
+  ACCENTS.filter((a) => a.palette).forEach(({ id, palette }) => {
+    rules[`[data-accent="${id}"]`] = accentVars(palette, false);
+    rules[`.dark[data-accent="${id}"]`] = accentVars(palette, true);
+    // Always-dark areas (sidebar etc.) keep the light-theme values of the chosen accent.
+    rules[`.dark[data-accent="${id}"] .theme-fixed`] = accentVars(palette, false);
+  });
+  return rules;
+}
+
 export default {
   darkMode: 'class',
   content: ['./index.html', './src/**/*.{js,jsx}'],
@@ -92,7 +111,7 @@ export default {
         card: '0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.03)',
         lift: '0 12px 32px -12px rgba(16,24,40,.18), 0 2px 6px -2px rgba(16,24,40,.06)',
         pop: '0 24px 64px -16px rgba(16,24,40,.32), 0 0 0 1px rgba(16,24,40,.06)',
-        glow: '0 8px 24px -8px rgba(99,102,241,.55)',
+        glow: '0 8px 24px -8px rgb(var(--b-500) / .55)',
       },
       letterSpacing: { tightest: '-0.03em' },
     },
@@ -103,6 +122,7 @@ export default {
       '.dark': { ...varsFor('dark'), colorScheme: 'dark' },
       // Always-dark areas keep the light-theme colour values.
       '.dark .theme-fixed': { ...varsFor('light'), colorScheme: 'dark' },
+      ...accentRules(),
     }),
   ],
 };

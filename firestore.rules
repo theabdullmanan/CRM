@@ -61,7 +61,7 @@ service cloud.firestore {
         || (signedIn() && request.auth.uid == uid && bootstrapOwner() && active()
             && resource.data.role == 'admin' && resource.data.get('superAdminRevoked', false) == false
             && request.resource.data.role == 'superadmin' && onlyChanges(['role']))
-        || (signedIn() && request.auth.uid == uid && onlyChanges(['name', 'phone', 'title', 'photoURL', 'lastSeenAt', 'mustChangePassword', 'passwordChangedAt']));
+        || (signedIn() && request.auth.uid == uid && onlyChanges(['name', 'phone', 'title', 'photoURL', 'accentColor', 'lastSeenAt', 'mustChangePassword', 'passwordChangedAt']));
       allow delete: if isSuperAdmin() || (isAdmin() && resource.data.role != 'superadmin');
     }
 

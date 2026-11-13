@@ -14,6 +14,7 @@ import { db } from '../../lib/firebase';
 import { isPreview, previewDb as P } from '../../lib/preview';
 import { ASSIGNABLE_ROLES, ROLES } from '../../lib/constants';
 import { cn } from '../../lib/utils';
+import { setAccent } from '../../lib/theme';
 import { flagOverdueTasks } from '../../services/taskService';
 import { Avatar, Badge, PageLoader } from '../ui';
 import NotificationBell from './NotificationBell';
@@ -115,7 +116,7 @@ function Sidebar({ onNavigate, counts, pillId }) {
     <div className="theme-fixed relative flex h-full flex-col overflow-hidden border-r border-white/[0.06] bg-gradient-to-b from-[#12142a] via-[#0d0f1f] to-[#0a0b16] text-slate-400">
       {/* Soft brand glow behind the logo */}
       <div className="pointer-events-none absolute -left-16 -top-24 h-64 w-64 rounded-full bg-brand-600/25 blur-3xl" />
-      <div className="pointer-events-none absolute -right-20 top-40 h-48 w-48 rounded-full bg-violet-600/10 blur-3xl" />
+      <div className="pointer-events-none absolute -right-20 top-40 h-48 w-48 rounded-full bg-brand-400/10 blur-3xl" />
 
       <Logo name={settings.companyName} />
 
@@ -135,10 +136,10 @@ function Sidebar({ onNavigate, counts, pillId }) {
                   {isActive && (
                     <motion.div
                       layoutId={pillId}
-                      className="absolute inset-0 rounded-lg bg-gradient-to-r from-brand-500/30 via-brand-500/15 to-violet-500/5 shadow-[inset_0_0_0_1px_rgba(129,134,248,.25)]"
+                      className="absolute inset-0 rounded-lg bg-gradient-to-r from-brand-500/30 via-brand-500/15 to-brand-400/5 shadow-[inset_0_0_0_1px_rgb(var(--b-400)/.25)]"
                       transition={{ type: 'tween', ease: [0.2, 0.7, 0.2, 1], duration: 0.25 }}
                     >
-                      <span className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-gradient-to-b from-brand-400 to-violet-500 shadow-[0_0_12px_rgba(129,134,248,.8)]" />
+                      <span className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-gradient-to-b from-brand-400 to-brand-600 shadow-[0_0_12px_rgb(var(--b-400)/.8)]" />
                     </motion.div>
                   )}
                   <item.icon className={cn('relative h-[17px] w-[17px] shrink-0 transition-colors', isActive ? 'text-brand-300' : 'text-slate-500 group-hover:text-slate-300')} strokeWidth={1.9} />
@@ -190,6 +191,8 @@ function LayoutInner() {
   const [open, setOpen] = useState(false);
   const [palette, setPalette] = useState(false);
   const { role, preview, setPreviewRole, profile } = useAuth();
+  // Each user sees their own accent colour (saved on their profile; default = General).
+  useEffect(() => { if (profile && !preview) setAccent(profile.accentColor); }, [profile?.id, profile?.accentColor, preview]);
   const counts = useNavCounts();
   const location = useLocation();
   const navigate = useNavigate();

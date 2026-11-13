@@ -37,7 +37,7 @@ export default function ThemeToggle() {
             {active && (
               <motion.span
                 layoutId="theme-thumb"
-                className="absolute inset-0 rounded-full bg-white shadow-[0_1px_3px_rgba(16,24,40,.15),0_0_0_1px_rgba(16,24,40,.05)] dark:bg-slate-200 dark:shadow-[0_0_12px_rgba(129,134,248,.35)]"
+                className="absolute inset-0 rounded-full bg-white shadow-[0_1px_3px_rgba(16,24,40,.15),0_0_0_1px_rgba(16,24,40,.05)] dark:bg-slate-200 dark:shadow-[0_0_12px_rgb(var(--b-400)/.35)]"
                 transition={{ type: 'spring', stiffness: 500, damping: 35 }}
               />
             )}
