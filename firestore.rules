@@ -97,7 +97,12 @@ service cloud.firestore {
         && request.resource.data.submittedBy == request.auth.uid;
       allow update: if hasRole(['admin', 'manager', 'ops', 'data'])
         // a CSM may dismiss their own flagged submission
-        || (hasRole(['csm']) && resource.data.submittedBy == request.auth.uid && onlyChanges(['status', 'dismissedAt']));
+        || (hasRole(['csm']) && resource.data.submittedBy == request.auth.uid && onlyChanges(['status', 'dismissedAt']))
+        // a Backend Developer completing the workflow task marks its zips delivered (nothing else)
+        || (hasRole(['backend_developer'])
+            && resource.data.status in ['pending', 'approved']
+            && request.resource.data.status == 'fulfilled'
+            && onlyChanges(['status', 'deliveredAt']));
       allow delete: if leadership()
         || (hasRole(['csm']) && resource.data.submittedBy == request.auth.uid && resource.data.status == 'flagged');
     }

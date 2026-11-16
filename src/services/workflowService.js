@@ -12,10 +12,11 @@ import {
   addDays,
 } from 'date-fns';
 import {
-  collection, deleteDoc, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, setDoc, Timestamp, where,
+  collection, deleteDoc, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, setDoc, Timestamp, where, writeBatch,
 } from 'firebase/firestore';
 import Papa from 'papaparse';
 import { db } from '../lib/firebase';
+import { toDate } from '../lib/utils';
 import { logActivity, notifyUsers } from './notifications';
 
 export const WORKFLOW_KIND = 'zip_workflow';
@@ -47,8 +48,11 @@ const place = (t) => `${t.clientName} › ${t.subAccountName}`;
 export async function startZipWorkflow({ results, client, subAccount, profile, requester = profile }) {
   preview();
   if (!WORKFLOW_SUBMITTERS.includes(profile.role)) return null;
-  const zips = results.filter((r) => r.status === 'pending').map((r) => r.zip);
+  const accepted = results.filter((r) => r.status === 'pending');
+  const zips = accepted.map((r) => r.zip);
   if (!zips.length) return null;
+  // Links the run to its zip submissions, so they can be marked delivered when it's completed.
+  const submissionIds = accepted.map((r) => r.submissionId).filter(Boolean);
 
   const adminIds = await activeIds(UPLOAD_ROLE);
   const ref = doc(collection(db, 'tasks'));
@@ -64,6 +68,7 @@ export async function startZipWorkflow({ results, client, subAccount, profile, r
     description: `${requester.name} submitted ${zips.length} zip code${zips.length > 1 ? 's' : ''}${requester.id !== profile.id ? ` (cooldown overridden by ${profile.name})` : ''}. Upload the CSV to send it to the Backend Developers.`,
     zips,
     zipCount: zips.length,
+    submissionIds,
     clientId: client.id,
     clientName: client.name,
     subAccountId: subAccount.id,
@@ -145,6 +150,7 @@ export async function uploadSheetAndDispatch(task, file, profile) {
         description: `${profile.name} uploaded ${file.name} (${rows.toLocaleString()} rows) for ${task.zipCount} zip codes. The first developer to complete it takes it.`,
         zips: task.zips,
         zipCount: task.zipCount,
+        submissionIds: task.submissionIds || [],
         clientId: task.clientId,
         clientName: task.clientName,
         subAccountId: task.subAccountId,
@@ -213,6 +219,9 @@ export async function completePoolTask(task, profile) {
     });
   });
 
+  // The work is done: take its zips out of the Ops review queue. Never blocks the completion.
+  await markJobDelivered(task).catch((e) => console.warn('[workflow] could not mark zips delivered', e));
+
   const others = (task.assigneeIds || []).filter((id) => id !== profile.id);
   const adminIds = await activeIds(UPLOAD_ROLE).catch(() => []);
   await Promise.all([
@@ -230,6 +239,67 @@ export async function completePoolTask(task, profile) {
     }),
   ]).catch(() => {});
   logActivity(profile, 'workflow.done', { subAccount: task.subAccountName, title: task.title });
+}
+
+const ms = (v) => toDate(v)?.getTime() || 0;
+const SAME_MOMENT = 10 * 60 * 1000; // a submission and its run are created together
+
+/**
+ * The zip submissions a run was started for that are still waiting in the review queue.
+ * Newer runs carry `submissionIds`. Older ones match only a submission from the same person,
+ * for the same sub-account and zip, made at the same moment the run started
+ * (or overridden at that moment), so older or later submissions of the same zip never match.
+ */
+export function deliverableSubmissions(task, subs) {
+  const ids = task.submissionIds || [];
+  const zips = task.zips || [];
+  const started = ms(task.requestedAt);
+  return subs.filter((s) => {
+    if (!['pending', 'approved'].includes(s.status)) return false;
+    if (ids.length) return ids.includes(s.id);
+    if (!started || s.subAccountId !== task.subAccountId || s.submittedBy !== task.requestedBy || !zips.includes(s.zip)) return false;
+    const at = ms(s.overriddenAt) || ms(s.createdAt);
+    return Boolean(at) && Math.abs(at - started) <= SAME_MOMENT;
+  });
+}
+
+/**
+ * Undo for the cleanup that ran on 16 Nov 2026: it guessed which older zips a completed run
+ * covered and could take the wrong ones out of the review queue. Puts back any zip marked
+ * delivered since then that no completed run is linked to. Safe to run repeatedly.
+ */
+export async function restoreUnlinkedDeliveries(tasks) {
+  if (!db) return 0;
+  const linked = new Set(tasks.filter((t) => t.status === 'done').flatMap((t) => t.submissionIds || []));
+  const since = new Date('2026-11-16T00:00:00').getTime();
+  const snap = await getDocs(query(collection(db, 'zipSubmissions'), where('status', '==', 'fulfilled')));
+  const back = snap.docs.filter((d) => {
+    const s = d.data();
+    return !s.dataRequestId && ms(s.deliveredAt) >= since && !linked.has(d.id);
+  });
+  for (let i = 0; i < back.length; i += 400) {
+    const batch = writeBatch(db);
+    back.slice(i, i + 400).forEach((d) => batch.update(d.ref, { status: 'pending', deliveredAt: null }));
+    await batch.commit();
+  }
+  return back.length;
+}
+
+/** Marks the given submissions delivered (status `fulfilled`). Only status and deliveredAt change. */
+export async function markSubmissionsDelivered(subs) {
+  if (!db || !subs.length) return;
+  for (let i = 0; i < subs.length; i += 400) {
+    const batch = writeBatch(db);
+    subs.slice(i, i + 400).forEach((s) => batch.update(doc(db, 'zipSubmissions', s.id), { status: 'fulfilled', deliveredAt: serverTimestamp() }));
+    await batch.commit();
+  }
+}
+
+async function markJobDelivered(task) {
+  if (!task.subAccountId) return;
+  const snap = await getDocs(query(collection(db, 'zipSubmissions'), where('subAccountId', '==', task.subAccountId)));
+  const subs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  await markSubmissionsDelivered(deliverableSubmissions(task, subs));
 }
 
 /** Deletes an uploaded CSV (meta doc + chunks). */

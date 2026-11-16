@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { collection, query, where } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { ClipboardCheck, Check, X, Download, Layers } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { previewDb } from '../lib/preview';
+import { isPreview, previewDb } from '../lib/preview';
+import { restoreUnlinkedDeliveries, WORKFLOW_KIND } from '../services/workflowService';
 import { useAuth } from '../contexts/AuthContext';
 import { useCollection } from '../hooks/useFirestore';
 import { ZIP_STATUS } from '../lib/constants';
@@ -86,6 +87,22 @@ export default function ZipQueue() {
     () => previewDb.zipSubmissions.filter((z) => ['pending', 'approved'].includes(z.status)),
   );
 
+  const { data: tasks, loading: tasksLoading } = useCollection(
+    () => query(collection(db, 'tasks'), where('kind', '==', WORKFLOW_KIND)),
+    [],
+    () => previewDb.tasks.filter((t) => t.kind === WORKFLOW_KIND),
+  );
+
+  // Puts back zips the earlier automatic cleanup took out of the queue by mistake (runs once per visit).
+  const restored = useRef(false);
+  useEffect(() => {
+    if (isPreview || tasksLoading || restored.current) return;
+    restored.current = true;
+    restoreUnlinkedDeliveries(tasks)
+      .then((n) => { if (n) toast.success(`${n} zip code${n > 1 ? 's' : ''} put back in the review queue`); })
+      .catch((e) => console.warn('[zip queue] could not restore zips', e));
+  }, [tasks, tasksLoading]);
+
   const sorted = useMemo(() => [...data].sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)), [data]);
   const filtered = sorted.filter((s) => {
     const q = search.toLowerCase();
@@ -96,7 +113,6 @@ export default function ZipQueue() {
   // One request = one person's zip codes for one sub-account (not each zip on its own).
   const requests = Object.values(groupBy(data, (s) => `${s.submittedBy}__${s.subAccountId}`));
   const pendingRequests = requests.filter((r) => r.some((s) => s.status === 'pending'));
-  const approvedRequests = requests.filter((r) => r.every((s) => s.status === 'approved'));
   const zipsIn = (list) => list.reduce((n, r) => n + r.length, 0);
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
@@ -114,12 +130,16 @@ export default function ZipQueue() {
           </>
         }
       />
-      <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <StatCard label="Requests awaiting review" value={pendingRequests.length} icon={ClipboardCheck} tone="amber" sub={plural(zipsIn(pendingRequests), 'zip code')} />
-        <StatCard label="Approved, not yet sent to CJ" value={approvedRequests.length} icon={Check} tone="emerald" sub={plural(zipsIn(approvedRequests), 'zip code')} />
-        <StatCard label="Sub-accounts in queue" value={groups.length} icon={Layers} tone="brand" />
-      </div>
-      <RequestPipeline />
+      <RequestPipeline
+        tasks={tasks}
+        loading={tasksLoading}
+        extraCards={(
+          <>
+            <StatCard label="Requests awaiting review" value={loading ? 0 : pendingRequests.length} icon={ClipboardCheck} tone="amber" sub={plural(zipsIn(pendingRequests), 'zip code')} />
+            <StatCard label="Sub-accounts in queue" value={loading ? 0 : groups.length} icon={Layers} tone="brand" sub={plural(zipsIn(groups), 'zip code')} />
+          </>
+        )}
+      />
       {loading ? <PageLoader /> : groups.length === 0 ? (
         <Card><EmptyState icon={ClipboardCheck} title="Queue is clear" message="New CSM submissions that pass the cooldown check will appear here." /></Card>
       ) : (

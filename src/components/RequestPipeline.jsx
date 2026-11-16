@@ -1,13 +1,9 @@
 import { useMemo, useState } from 'react';
-import { collection, query, where } from 'firebase/firestore';
 import { BadgeCheck, CheckCircle2, Code2, Inbox, Send } from 'lucide-react';
-import { db } from '../lib/firebase';
-import { previewDb } from '../lib/preview';
-import { useCollection } from '../hooks/useFirestore';
 import { useUsers } from '../hooks/useData';
 import { ROLES } from '../lib/constants';
 import { cn, fmtDate, fromNow, toDate } from '../lib/utils';
-import { WORKFLOW_KIND, DEV_ROLE } from '../services/workflowService';
+import { DEV_ROLE } from '../services/workflowService';
 import { groupJobs } from './workflow';
 import {
   Avatar, Badge, Card, CardHeader, EmptyState, ProgressBar, Select, StatCard, Table, Tabs, Td, Th,
@@ -34,19 +30,15 @@ const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
  * requester sends zips to CJ → CJ approves (uploads the sheet) and it is assigned to the
  * Backend Developers → the first developer to finish completes it.
  */
-export default function RequestPipeline() {
-  const [period, setPeriod] = useState('30');
+export default function RequestPipeline({ tasks, loading, extraCards = null }) {
+  // All time by default, so the cards count every request unless a shorter period is picked.
+  const [period, setPeriod] = useState('all');
   const [roleF, setRoleF] = useState('');
   const [personF, setPersonF] = useState('');
   const [devF, setDevF] = useState('');
   const [stageF, setStageF] = useState('');
   const [showAll, setShowAll] = useState(false);
 
-  const { data: tasks, loading } = useCollection(
-    () => query(collection(db, 'tasks'), where('kind', '==', WORKFLOW_KIND)),
-    [],
-    () => previewDb.tasks.filter((t) => t.kind === WORKFLOW_KIND),
-  );
   const { data: users } = useUsers();
   const userById = useMemo(() => Object.fromEntries(users.map((u) => [u.id, u])), [users]);
 
@@ -129,13 +121,8 @@ export default function RequestPipeline() {
   const rows = showAll ? filtered : filtered.slice(0, 10);
 
   return (
-    <Card className="mb-6">
-      <CardHeader
-        title="Request pipeline"
-        subtitle="Requests sent to CJ → approved by CJ and assigned to the Backend Developers → completed. One request = one person's zip codes for one sub-account."
-      />
-      <div className="space-y-5 p-5">
-        <div className="flex flex-wrap items-center gap-2">
+    <>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
           <Tabs size="sm" tabs={PERIODS} value={period} onChange={setPeriod} />
           <Select className="h-9 w-auto min-w-[150px]" value={roleF} onChange={(e) => { setRoleF(e.target.value); setPersonF(''); }}>
             <option value="">All roles</option>
@@ -158,15 +145,22 @@ export default function RequestPipeline() {
               Clear filters
             </button>
           )}
-        </div>
+      </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard label="Requests sent to CJ" value={sent} icon={Send} tone="brand" sub={`${zipTotal} zip code${zipTotal === 1 ? '' : 's'}`} />
-          <StatCard label="Approved by CJ" value={approved} icon={BadgeCheck} tone="emerald" sub={`${sent - approved} still waiting on CJ`} />
-          <StatCard label="Assigned to backend devs" value={assigned} icon={Code2} tone="sky" sub={`${assigned - completed} in progress`} />
-          <StatCard label="Completed by backend devs" value={completed} icon={CheckCircle2} tone="violet" sub={`${pct(completed, sent)}% of requests sent`} />
-        </div>
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <StatCard label="Requests sent to CJ" value={loading ? 0 : sent} icon={Send} tone="brand" sub={`${zipTotal} zip code${zipTotal === 1 ? '' : 's'}`} />
+        <StatCard label="Approved by CJ" value={loading ? 0 : approved} icon={BadgeCheck} tone="emerald" sub={`${sent - approved} still waiting on CJ`} />
+        <StatCard label="Assigned to backend devs" value={loading ? 0 : assigned} icon={Code2} tone="sky" sub={`${assigned - completed} in progress`} />
+        <StatCard label="Completed by backend devs" value={loading ? 0 : completed} icon={CheckCircle2} tone="violet" sub={`${pct(completed, sent)}% of requests sent`} />
+        {extraCards}
+      </div>
 
+      <Card className="mb-6">
+        <CardHeader
+          title="Request pipeline"
+          subtitle="Requests sent to CJ → approved by CJ and assigned to the Backend Developers → completed by a developer."
+        />
+        <div className="space-y-5 p-5">
         {loading ? (
           <p className="py-6 text-center text-sm text-slate-400">Loading…</p>
         ) : !jobs.length ? (
@@ -269,7 +263,8 @@ export default function RequestPipeline() {
             </div>
           </>
         )}
-      </div>
-    </Card>
+        </div>
+      </Card>
+    </>
   );
 }

@@ -77,7 +77,7 @@ export async function submitZips({ zips, client, subAccount, profile, settings, 
                 eligibleAt: l.expiresAt,
               },
             });
-            return { zip, status: 'flagged', eligibleAt: toDate(l.expiresAt), conflict: l };
+            return { zip, status: 'flagged', submissionId: subRef.id, eligibleAt: toDate(l.expiresAt), conflict: l };
           }
           const expiresAt = Timestamp.fromDate(addDays(now, cooldownDays));
           tx.set(lockRef, {
@@ -90,7 +90,7 @@ export async function submitZips({ zips, client, subAccount, profile, settings, 
             expiresAt,
           });
           tx.set(subRef, { ...base, status: 'pending', eligibleAgainAt: expiresAt });
-          return { zip, status: 'pending' };
+          return { zip, status: 'pending', submissionId: subRef.id };
         });
       } catch (error) {
         return { zip, status: 'error', error };

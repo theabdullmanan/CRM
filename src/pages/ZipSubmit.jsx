@@ -261,7 +261,7 @@ export default function ZipSubmit() {
                                   await overrideFlag(s, profile, settings);
                                   // The overridden zip joins the normal workflow: admins upload its contact sheet.
                                   await startZipWorkflow({
-                                    results: [{ zip: s.zip, status: 'pending' }],
+                                    results: [{ zip: s.zip, status: 'pending', submissionId: s.id }],
                                     client: { id: s.clientId, name: s.clientName },
                                     subAccount: { id: s.subAccountId, name: s.subAccountName },
                                     profile,
