@@ -4,7 +4,7 @@ import { collection, query, where } from 'firebase/firestore';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   LayoutDashboard, Users, MapPin, ClipboardCheck, DollarSign, Map, CheckSquare,
-  UserCog, Settings, Crown, LogOut, Menu, X, Bell, Search, ChevronRight, Building2, SearchCheck, UserPlus, CircleUser, KeyRound,
+  UserCog, Settings, Crown, LogOut, Menu, X, Bell, Search, ChevronRight, Building2, SearchCheck, UserPlus, CircleUser, KeyRound, Trophy,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCollection } from '../../hooks/useFirestore';
@@ -26,6 +26,7 @@ export const NAV = [
   { to: '/super-admin', label: 'Super Admin', icon: Crown, area: 'superAdmin' },
   { section: 'Overview' },
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, area: 'dashboard', end: true },
+  { to: '/leaderboard', label: 'Leaderboard', icon: Trophy, area: 'leaderboard' },
   { to: '/clients', label: 'Clients', icon: Users, area: 'clients' },
   { to: '/sub-accounts', label: 'Sub-accounts', icon: Building2, area: 'agency' },
   { section: 'Zip codes' },
@@ -74,7 +75,8 @@ function useNavCounts() {
   }, [myTasks.data, allTasks.data]);
 
   return {
-    pending: pending.data.length,
+    // Requests awaiting review (one person's zips for one sub-account), same as the Ops review queue card.
+    pending: new Set(pending.data.filter((z) => z.status === 'pending').map((z) => `${z.submittedBy}__${z.subAccountId}`)).size,
     flagged: flagged.data.length,
     tasks: myTasks.data.filter((t) => t.status !== 'done').length
       + shared.data.filter((t) => t.status !== 'done' && t.assigneeIds?.includes(user?.uid)).length,

@@ -250,32 +250,36 @@ const SAME_MOMENT = 10 * 60 * 1000; // a submission and its run are created toge
  * for the same sub-account and zip, made at the same moment the run started
  * (or overridden at that moment), so older or later submissions of the same zip never match.
  */
-export function deliverableSubmissions(task, subs) {
+/** Whether submission `s` is one of the zips run `task` was started for (any status). */
+function belongsToRun(task, s) {
   const ids = task.submissionIds || [];
-  const zips = task.zips || [];
+  if (ids.length) return ids.includes(s.id);
   const started = ms(task.requestedAt);
-  return subs.filter((s) => {
-    if (!['pending', 'approved'].includes(s.status)) return false;
-    if (ids.length) return ids.includes(s.id);
-    if (!started || s.subAccountId !== task.subAccountId || s.submittedBy !== task.requestedBy || !zips.includes(s.zip)) return false;
-    const at = ms(s.overriddenAt) || ms(s.createdAt);
-    return Boolean(at) && Math.abs(at - started) <= SAME_MOMENT;
-  });
+  if (!started || s.subAccountId !== task.subAccountId || s.submittedBy !== task.requestedBy || !(task.zips || []).includes(s.zip)) return false;
+  const at = ms(s.overriddenAt) || ms(s.createdAt);
+  return Boolean(at) && Math.abs(at - started) <= SAME_MOMENT;
+}
+
+export function deliverableSubmissions(task, subs) {
+  return subs.filter((s) => ['pending', 'approved'].includes(s.status) && belongsToRun(task, s));
 }
 
 /**
- * Undo for the cleanup that ran on 16 Nov 2026: it guessed which older zips a completed run
- * covered and could take the wrong ones out of the review queue. Puts back any zip marked
- * delivered since then that no completed run is linked to. Safe to run repeatedly.
+ * Undo for the cleanup that ran on 16 Nov 2026 only: it guessed which older zips a completed run
+ * covered and could take the wrong ones out of the review queue. Puts back zips marked delivered
+ * that day that no completed run really covers. Zips a developer genuinely completed are left
+ * alone, and nothing delivered after 16 Nov is ever touched. Safe to run repeatedly.
  */
 export async function restoreUnlinkedDeliveries(tasks) {
   if (!db) return 0;
-  const linked = new Set(tasks.filter((t) => t.status === 'done').flatMap((t) => t.submissionIds || []));
-  const since = new Date('2026-11-16T00:00:00').getTime();
+  const done = tasks.filter((t) => t.step === 'dev_process' && t.status === 'done');
+  const from = new Date('2026-11-16T00:00:00-06:00').getTime();
+  const until = new Date('2026-11-17T00:00:00-06:00').getTime();
   const snap = await getDocs(query(collection(db, 'zipSubmissions'), where('status', '==', 'fulfilled')));
   const back = snap.docs.filter((d) => {
-    const s = d.data();
-    return !s.dataRequestId && ms(s.deliveredAt) >= since && !linked.has(d.id);
+    const s = { id: d.id, ...d.data() };
+    const at = ms(s.deliveredAt);
+    return !s.dataRequestId && at >= from && at < until && !done.some((t) => belongsToRun(t, s));
   });
   for (let i = 0; i < back.length; i += 400) {
     const batch = writeBatch(db);

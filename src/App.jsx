@@ -23,6 +23,8 @@ const Team = lazy(() => import('./pages/Team'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Notifications = lazy(() => import('./pages/Notifications'));
 const SuperAdmin = lazy(() => import('./pages/SuperAdmin'));
+const Leaderboard = lazy(() => import('./pages/Leaderboard'));
+const LeaderboardTv = lazy(() => import('./pages/LeaderboardTv'));
 
 function FullScreenLoader() {
   return <div className="flex min-h-screen items-center justify-center"><PageLoader /></div>;
@@ -53,6 +55,8 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
       <Route path="/register" element={<PublicOnly><Register /></PublicOnly>} />
+      {/* TV screen: outside RequireAuth so the disabled "display" account can reach it; the page checks access itself */}
+      <Route path="/leaderboard/tv" element={<Suspense fallback={<FullScreenLoader />}><LeaderboardTv /></Suspense>} />
       <Route element={<RequireAuth><Layout /></RequireAuth>}>
         <Route
           path="*"
@@ -75,6 +79,7 @@ export default function App() {
                 <Route path="account" element={<Account />} />
                 <Route path="settings" element={<Guard area="settings"><Settings /></Guard>} />
                 <Route path="super-admin" element={<Guard area="superAdmin"><SuperAdmin /></Guard>} />
+                <Route path="leaderboard" element={<Guard area="leaderboard"><Leaderboard /></Guard>} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>

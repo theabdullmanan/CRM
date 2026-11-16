@@ -169,6 +169,47 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // ---------- Senders Leaderboard (new collections only) ----------
+    // TV account: role "display" and kept disabled, so no existing rule lets it read anything else.
+    function lbDisplay() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && me().role == 'display' && me().active == false;
+    }
+    // Leadership (super admin included), active Sending Department members, or the TV account.
+    function lbViewer() {
+      return leadership()
+        || (active() && me().get('department', '').trim().lower() == 'sending department')
+        || lbDisplay();
+    }
+    // Lead counts: written only by n8n (service account, which bypasses rules). No browser can write them.
+    match /leadSendEvents/{id} {
+      allow read: if lbViewer();
+      allow write: if false;
+    }
+    match /leadDailyCounts/{day} {
+      allow read: if lbViewer();
+      allow write: if false;
+    }
+    match /leaderboardSettings/{doc} {
+      allow read: if lbViewer();
+      allow write: if leadership();
+    }
+    match /leaderboardSenders/{uid} {
+      allow read: if lbViewer();
+      allow create, update: if leadership();
+      allow delete: if false; // removing a sender only hides them (active: false)
+    }
+    match /leadAdjustments/{id} {
+      allow read: if lbViewer();
+      allow create: if leadership()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.delta is int && request.resource.data.delta != 0
+        && request.resource.data.reason is string && request.resource.data.reason.size() >= 3
+        && request.resource.data.day is string
+        && request.resource.data.createdAt == request.time;
+      allow update, delete: if false; // permanent log
+    }
+
     // ---------- everything else stays locked (same as the original dashboard rules) ----------
     match /{document=**} {
       allow read, write: if false;

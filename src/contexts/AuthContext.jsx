@@ -11,6 +11,7 @@ import { doc, getDoc, onSnapshot, serverTimestamp, updateDoc, writeBatch } from 
 import { auth, db } from '../lib/firebase';
 import { DEFAULT_SETTINGS, ROLES, can as canAccess, isAdminRole } from '../lib/constants';
 import { isPreview, previewDb } from '../lib/preview';
+import { canViewLeaderboard } from '../lib/leaderboard';
 
 const AuthContext = createContext(null);
 
@@ -35,7 +36,7 @@ function PreviewAuthProvider({ children }) {
       loading: false,
       isAdmin: isAdminRole(profile.role),
       isSuperAdmin: profile.role === 'superadmin',
-      can: (area) => canAccess(profile.role, area),
+      can: (area) => (area === 'leaderboard' ? canViewLeaderboard(profile) : canAccess(profile.role, area)),
       setPreviewRole: (r) => {
         try { localStorage.setItem('previewRole', r); } catch { /* ignore */ }
         setRole(r);
@@ -116,7 +117,7 @@ function FirebaseAuthProvider({ children }) {
       loading,
       isAdmin: isAdminRole(role),
       isSuperAdmin: role === 'superadmin',
-      can: (area) => canAccess(role, area),
+      can: (area) => (area === 'leaderboard' ? canViewLeaderboard(profile) : canAccess(role, area)),
 
       login: (email, password) => signInWithEmailAndPassword(auth, email, password),
       logout: () => signOut(auth),
