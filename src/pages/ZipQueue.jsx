@@ -1,17 +1,18 @@
 import { useMemo, useState } from 'react';
 import { collection, query, where } from 'firebase/firestore';
 import toast from 'react-hot-toast';
-import { ClipboardCheck, Copy, Check, X, Send, Download, Layers } from 'lucide-react';
+import { ClipboardCheck, Check, X, Download, Layers } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { previewDb } from '../lib/preview';
 import { useAuth } from '../contexts/AuthContext';
 import { useCollection } from '../hooks/useFirestore';
 import { ZIP_STATUS } from '../lib/constants';
 import { cn, downloadCsv, fmtDate, friendlyError, groupBy } from '../lib/utils';
-import { approveSubmissions, createDataRequest, rejectSubmission } from '../services/zipService';
+import { rejectSubmission } from '../services/zipService';
 import {
-  Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader, PageLoader, SearchInput, StatCard, StatusBadge, Textarea,
+  Badge, Button, Card, EmptyState, Field, Modal, PageHeader, PageLoader, SearchInput, StatCard, StatusBadge, Textarea,
 } from '../components/ui';
+import RequestPipeline from '../components/RequestPipeline';
 
 function GroupCard({ subs, profile }) {
   const first = subs[0];
@@ -19,9 +20,6 @@ function GroupCard({ subs, profile }) {
   const [busy, setBusy] = useState('');
   const [reject, setReject] = useState(null);
   const [reason, setReason] = useState('');
-  const [requestOpen, setRequestOpen] = useState(false);
-  const [reqNotes, setReqNotes] = useState('');
-  const [reqDue, setReqDue] = useState('');
 
   const chosen = subs.filter((s) => selected.has(s.id));
   const toggle = (id) => setSelected((prev) => {
@@ -36,25 +34,12 @@ function GroupCard({ subs, profile }) {
     try { await fn(); } catch (e) { toast.error(friendlyError(e)); } finally { setBusy(''); }
   };
 
-  const copy = () => {
-    navigator.clipboard.writeText(chosen.map((s) => s.zip).join('\n'));
-    toast.success(`${chosen.length} zips copied`);
-  };
-
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
         <div>
           <p className="font-semibold text-slate-900">{first.clientName} <span className="text-slate-400">›</span> {first.subAccountName}</p>
           <p className="text-xs text-slate-500">{subs.length} valid zip{subs.length > 1 ? 's' : ''} · cooldown checked · oldest {fmtDate(subs[subs.length - 1].createdAt)}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="secondary" icon={Copy} onClick={copy} disabled={!chosen.length}>Copy list</Button>
-          <Button size="sm" variant="secondary" icon={Check} loading={busy === 'approve'} disabled={!chosen.some((s) => s.status === 'pending')}
-            onClick={() => run('approve', async () => { await approveSubmissions(chosen.filter((s) => s.status === 'pending'), profile); toast.success('Approved'); })}>
-            Approve
-          </Button>
-          <Button size="sm" icon={Send} disabled={!chosen.length} onClick={() => setRequestOpen(true)}>Request data from CJ</Button>
         </div>
       </div>
       <div className="px-5 py-4">
@@ -88,22 +73,6 @@ function GroupCard({ subs, profile }) {
         footer={<><Button variant="secondary" onClick={() => setReject(null)}>Cancel</Button><Button variant="danger" loading={busy === 'reject'} onClick={() => run('reject', async () => { await rejectSubmission(reject, profile, reason); setReject(null); toast.success('Rejected'); })}>Reject</Button></>}>
         <Field label="Reason (shown to the CSM)"><Textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Outside service area" /></Field>
       </Modal>
-
-      <Modal open={requestOpen} onClose={() => setRequestOpen(false)} title="Request contact data from CJ"
-        subtitle={`${chosen.length} zips for ${first.clientName} › ${first.subAccountName}. Everyone with the Data role is notified automatically.`}
-        footer={<><Button variant="secondary" onClick={() => setRequestOpen(false)}>Cancel</Button><Button icon={Send} loading={busy === 'request'} onClick={() => run('request', async () => {
-          await createDataRequest({ subs: chosen, profile, notes: reqNotes, dueDate: reqDue ? new Date(`${reqDue}T17:00:00`) : null });
-          setRequestOpen(false);
-          toast.success('Request sent to CJ');
-        })}>Send request</Button></>}>
-        <div className="space-y-4">
-          <div className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto rounded-lg bg-slate-50 p-3">
-            {chosen.map((s) => <span key={s.id} className="rounded bg-white px-2 py-0.5 font-mono text-xs ring-1 ring-slate-200">{s.zip}</span>)}
-          </div>
-          <Field label="Needed by (optional)"><Input type="date" value={reqDue} onChange={(e) => setReqDue(e.target.value)} /></Field>
-          <Field label="Notes for CJ"><Textarea rows={3} value={reqNotes} onChange={(e) => setReqNotes(e.target.value)} /></Field>
-        </div>
-      </Modal>
     </Card>
   );
 }
@@ -124,6 +93,13 @@ export default function ZipQueue() {
   });
   const groups = Object.values(groupBy(filtered, (s) => s.subAccountId)).sort((a, b) => a[0].clientName.localeCompare(b[0].clientName));
 
+  // One request = one person's zip codes for one sub-account (not each zip on its own).
+  const requests = Object.values(groupBy(data, (s) => `${s.submittedBy}__${s.subAccountId}`));
+  const pendingRequests = requests.filter((r) => r.some((s) => s.status === 'pending'));
+  const approvedRequests = requests.filter((r) => r.every((s) => s.status === 'approved'));
+  const zipsIn = (list) => list.reduce((n, r) => n + r.length, 0);
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
   return (
     <>
       <PageHeader
@@ -139,10 +115,11 @@ export default function ZipQueue() {
         }
       />
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <StatCard label="Awaiting review" value={data.filter((s) => s.status === 'pending').length} icon={ClipboardCheck} tone="amber" />
-        <StatCard label="Approved, not yet sent to CJ" value={data.filter((s) => s.status === 'approved').length} icon={Check} tone="emerald" />
+        <StatCard label="Requests awaiting review" value={pendingRequests.length} icon={ClipboardCheck} tone="amber" sub={plural(zipsIn(pendingRequests), 'zip code')} />
+        <StatCard label="Approved, not yet sent to CJ" value={approvedRequests.length} icon={Check} tone="emerald" sub={plural(zipsIn(approvedRequests), 'zip code')} />
         <StatCard label="Sub-accounts in queue" value={groups.length} icon={Layers} tone="brand" />
       </div>
+      <RequestPipeline />
       {loading ? <PageLoader /> : groups.length === 0 ? (
         <Card><EmptyState icon={ClipboardCheck} title="Queue is clear" message="New CSM submissions that pass the cooldown check will appear here." /></Card>
       ) : (
