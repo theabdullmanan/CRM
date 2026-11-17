@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLeaderboard } from '../hooks/useLeaderboard';
 import { useMinuteTick } from '../hooks/useBusinessDayWindow';
 import { centralClock, centralDate } from '../lib/businessDay';
-import { canViewLeaderboard, isDisplayAccount } from '../lib/leaderboard';
+import { canViewLeaderboard, isDisplayAccount, RANGES } from '../lib/leaderboard';
 import { friendlyError } from '../lib/utils';
 import { Podium, RankList } from '../components/leaderboard/Board';
 
@@ -17,6 +17,27 @@ import { Podium, RankList } from '../components/leaderboard/Board';
  */
 
 const shell = 'theme-fixed min-h-screen bg-[#06070d] text-white antialiased';
+const EMPTY_TEXT = { today: 'No leads sent yet today', week: 'No leads sent yet this week', month: 'No leads sent yet this month' };
+
+/* Dark, TV-sized range tabs — the light-theme Tabs component from components/ui doesn't fit this page. */
+function RangeTabs({ value, onChange }) {
+  return (
+    <div className="inline-flex gap-1 rounded-xl bg-white/5 p-1.5 ring-1 ring-white/10">
+      {RANGES.map((t) => (
+        <button
+          key={t.value}
+          type="button"
+          onClick={() => onChange(t.value)}
+          className={`rounded-lg px-5 py-2 text-lg font-semibold transition-colors ${
+            value === t.value ? 'bg-white/15 text-white shadow-[0_1px_0_rgba(255,255,255,.08)_inset]' : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function Clock() {
   const [now, setNow] = useState(() => new Date());
@@ -64,10 +85,12 @@ function SignIn() {
 }
 
 function Board() {
-  const lb = useLeaderboard('today');
+  const [range, setRange] = useState('today');
+  const lb = useLeaderboard(range);
   const now = useMinuteTick();
   const { rows, span, settings } = lb;
-  const resets = span.end.toLocaleString('en-US', { timeZone: 'America/Chicago', weekday: 'long', hour: 'numeric', minute: '2-digit' });
+  const rangeLabel = RANGES.find((r) => r.value === range)?.label || 'Today';
+  const resets = span.end?.toLocaleString('en-US', { timeZone: 'America/Chicago', weekday: 'long', hour: 'numeric', minute: '2-digit' });
 
   return (
     <div className={`${shell} flex flex-col px-6 py-6 sm:px-10 sm:py-8`}>
@@ -78,11 +101,15 @@ function Board() {
           </span>
           <div>
             <h1 className="text-4xl font-extrabold tracking-tight">Senders Leaderboard</h1>
-            <p className="mt-1 text-xl text-slate-400">Today · <span className="font-semibold text-white tabular-nums">{lb.total}</span> leads sent</p>
+            <p className="mt-1 text-xl text-slate-400">{rangeLabel} · <span className="font-semibold text-white tabular-nums">{lb.total}</span> leads sent</p>
           </div>
         </div>
         <Clock />
       </header>
+
+      <div className="mt-6 flex justify-center">
+        <RangeTabs value={range} onChange={setRange} />
+      </div>
 
       <main className="mt-8 flex-1 space-y-6">
         {lb.error ? (
@@ -93,15 +120,16 @@ function Board() {
           <p className="p-6 text-2xl text-slate-400">No senders on the leaderboard yet.</p>
         ) : (
           <>
-            {lb.total === 0 && <p className="rounded-2xl bg-white/[0.04] px-6 py-4 text-center text-2xl text-slate-300 ring-1 ring-white/10">No leads sent yet today</p>}
-            <Podium rows={rows} now={now} idleMinutes={settings.idleMinutes} span={span} range="today" tv />
-            <RankList rows={rows} now={now} idleMinutes={settings.idleMinutes} span={span} range="today" tv />
+            {lb.total === 0 && <p className="rounded-2xl bg-white/[0.04] px-6 py-4 text-center text-2xl text-slate-300 ring-1 ring-white/10">{EMPTY_TEXT[range]}</p>}
+            {lb.unlinked && <p className="text-center text-sm text-slate-500">Some names are shown exactly as n8n sends them — link them in Settings for photos and custom targets.</p>}
+            <Podium rows={rows} now={now} idleMinutes={settings.idleMinutes} span={span} range={range} tv />
+            <RankList rows={rows} now={now} idleMinutes={settings.idleMinutes} span={span} range={range} tv />
           </>
         )}
       </main>
 
       <footer className="mt-6 flex items-center justify-between text-base text-slate-500">
-        <span>Updates live · resets {resets} CT</span>
+        <span>Updates live{range === 'today' && resets ? ` · resets ${resets} CT` : ''}</span>
         <button type="button" onClick={() => document.documentElement.requestFullscreen?.().catch(() => {})}
           className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-slate-500 hover:bg-white/5 hover:text-slate-300">
           <Maximize2 className="h-4 w-4" /> Full screen

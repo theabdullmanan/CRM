@@ -5,20 +5,49 @@ import { toDate } from '../lib/utils';
 import { LEADERBOARD_DEFAULTS, senderKeyOf } from '../lib/leaderboard';
 import { useCollection } from './useFirestore';
 import { useBusinessDayWindow } from './useBusinessDayWindow';
+import { useAgency } from './useAgency';
 
-// Preview mode (no Firebase): a small sample board so the screens can be reviewed.
-const PREVIEW_SENDERS = ['Maria Lopez', 'Daniel Brooks', 'Aisha Khan', 'Tyler Reed', 'Sofia Nguyen', 'Marcus Hill', 'Priya Das']
-  .map((name, i) => ({ id: `ps${i}`, userId: `ps${i}`, name, matchName: name, active: true, target: i === 2 ? 45 : null }));
-function previewDays(startKey, todayKey) {
-  const now = Date.now();
-  const counts = [33, 27, 27, 19, 12, 4, 0];
-  const mins = [3, 9, 41, 75, 140, 220, 0];
-  return [{
-    id: todayKey, day: todayKey >= startKey ? todayKey : startKey,
-    counts: Object.fromEntries(PREVIEW_SENDERS.map((s, i) => [senderKeyOf(s.matchName), counts[i]]).filter(([, n]) => n)),
-    last: Object.fromEntries(PREVIEW_SENDERS.map((s, i) => [senderKeyOf(s.matchName), new Date(now - mins[i] * 60000)]).filter((_, i) => counts[i])),
-    names: { s_jamie_ortiz: 'Jamie Ortiz' },
-  }, { id: 'unmatched', day: todayKey, counts: { s_jamie_ortiz: 6 }, last: { s_jamie_ortiz: new Date(now - 20 * 60000) }, names: { s_jamie_ortiz: 'Jamie Ortiz' } }];
+const num = (v) => (v === null || v === undefined || v === '' || Number.isNaN(Number(v)) ? null : Number(v));
+
+/**
+ * Lead counts per sender from n8n's `dashboard/latest` (one row per client with its `sender`).
+ * Prefers the GHL counts (ghlLeadsToday / ThisWeek / ThisMonth) and falls back to the status-sheet
+ * counts (leadsPerDay = today, leads7d = last 7 days) while the GHL node isn't filling them.
+ */
+/** Leads for one client row in a range. `n` is null when n8n has no number for it; `fallback` = status-sheet value. */
+export function clientLeads(r, range) {
+  if (range === 'today') {
+    const g = num(r.ghlLeadsToday);
+    return g !== null ? { n: g, fallback: false } : { n: num(r.leadsPerDay), fallback: num(r.leadsPerDay) !== null };
+  }
+  if (range === 'week') {
+    const g = num(r.ghlLeadsThisWeek);
+    return g !== null ? { n: g, fallback: false } : { n: num(r.leads7d), fallback: num(r.leads7d) !== null };
+  }
+  return { n: num(r.ghlLeadsThisMonth), fallback: false };
+}
+
+function dashboardCounts(rows, range) {
+  const agg = new Map();
+  let fallback = false;
+  let all = 0;
+  let available = false; // true once any client has a real number for this range
+  rows.forEach((r) => {
+    const name = String(r.sender || '').trim();
+    const c = clientLeads(r, range);
+    const { n } = c;
+    if (c.fallback) fallback = true;
+    if (n !== null) available = true;
+    all += n || 0;
+    if (!name) return; // counted in the overall total, but no sender to credit
+    const key = senderKeyOf(name);
+    const a = agg.get(key) || { key, count: 0, last: null, name };
+    a.count += n || 0;
+    const last = toDate(r.lastLeadAt);
+    if (last && (!a.last || last > a.last)) a.last = last;
+    agg.set(key, a);
+  });
+  return { agg, fallback, all, available };
 }
 
 /** Every GHL name key that belongs to a sender: their matchName plus any linked aliases. */
@@ -39,24 +68,36 @@ export function useLeaderboard(range = 'today') {
   const days = useCollection(
     () => query(collection(db, 'leadDailyCounts'), where('day', '>=', startKey)),
     [startKey],
-    () => previewDays(startKey, todayKey),
+    () => [],
   );
   const adjustments = useCollection(
     () => query(collection(db, 'leadAdjustments'), where('day', '>=', startKey)),
     [startKey],
     () => [],
   );
-  const senders = useCollection(() => collection(db, 'leaderboardSenders'), [], () => PREVIEW_SENDERS);
+  const senders = useCollection(() => collection(db, 'leaderboardSenders'), [], () => []);
   const settingsDocs = useCollection(() => collection(db, 'leaderboardSettings'), [], () => []);
+  const agency = useAgency();
 
   const result = useMemo(() => {
     const settings = { ...LEADERBOARD_DEFAULTS, ...(settingsDocs.data.find((d) => d.id === 'config') || {}) };
     settings.defaultTarget = Number(settings.defaultTarget) || LEADERBOARD_DEFAULTS.defaultTarget;
     settings.idleMinutes = Number(settings.idleMinutes) || LEADERBOARD_DEFAULTS.idleMinutes;
 
-    // Totals per GHL sender key across the range (future days can't exist, but are ignored anyway).
-    const agg = new Map();
-    days.data.filter((d) => d.day >= startKey && d.day <= todayKey).forEach((d) => {
+    // Source 1: per-lead events written by n8n (leadDailyCounts). Used whenever any exist in range.
+    // Source 2: lead counts per client in dashboard/latest, credited to that client's sender.
+    const inRange = days.data.filter((d) => d.day >= startKey && d.day <= todayKey);
+    const hasEvents = inRange.some((d) => Object.keys(d.counts || {}).length > 0);
+    let agg = new Map();
+    let source = 'events';
+    let fallback = false;
+    let allLeads = null;
+    let available = hasEvents;
+    if (!hasEvents && agency.rows?.length) {
+      ({ agg, fallback, all: allLeads, available } = dashboardCounts(agency.rows, range));
+      source = 'dashboard';
+    }
+    inRange.filter(() => source === 'events').forEach((d) => {
       Object.entries(d.counts || {}).forEach(([key, n]) => {
         const a = agg.get(key) || { key, count: 0, last: null, name: '' };
         a.count += Number(n) || 0;
@@ -76,7 +117,7 @@ export function useLeaderboard(range = 'today') {
     const owner = new Map();
     senders.data.forEach((s) => senderKeys(s).forEach((k) => { if (!owner.has(k)) owner.set(k, s); }));
 
-    const rows = senders.data
+    const linked = senders.data
       .filter((s) => s.active !== false)
       .map((s) => {
         let sent = 0;
@@ -92,30 +133,59 @@ export function useLeaderboard(range = 'today') {
         const target = Number(s.target) || settings.defaultTarget;
         const goal = target * span.days;
         return { ...s, count, sent, adjusted, last, target, goal, pct: goal ? Math.round((count / goal) * 100) : 0, hit: goal > 0 && count >= goal };
-      })
+      });
+
+    const unmatched = [...agg.values()].filter((a) => !owner.has(a.key)).sort((a, b) => b.count - a.count);
+
+    // Real GHL sender names nobody has linked in Settings yet are still shown on the board
+    // (no photo/custom target), alongside the linked senders — never dropped just because
+    // they haven't been set up, and never replacing a sender someone already linked.
+    const unlinked = unmatched.length > 0;
+    const unlinkedRows = unmatched.map((a) => {
+      const target = settings.defaultTarget;
+      const goal = target * span.days;
+      const count = Math.max(0, a.count);
+      return {
+        id: a.key, name: a.name || a.key, userId: null, active: true, unlinked: true,
+        count, sent: count, adjusted: 0, last: a.last, target, goal,
+        pct: goal ? Math.round((count / goal) * 100) : 0, hit: goal > 0 && count >= goal,
+      };
+    });
+
+    const rows = [...linked, ...unlinkedRows]
       // Most leads first. Same count: whoever reached it first (earlier last lead) ranks higher.
       .sort((a, b) => b.count - a.count
         || (a.last ? a.last.getTime() : Infinity) - (b.last ? b.last.getTime() : Infinity)
-        || a.name.localeCompare(b.name))
+        || String(a.name || '').localeCompare(String(b.name || '')))
       .map((r, i) => ({ ...r, rank: i + 1 }));
-
-    const unmatched = [...agg.values()].filter((a) => !owner.has(a.key)).sort((a, b) => b.count - a.count);
 
     return {
       rows,
       unmatched,
+      unlinked,
+      source,
+      fallback,
+      dataUpdatedAt: source === 'dashboard' ? agency.updatedAt : null,
       settings,
       adjustments: adjList,
       senders: senders.data,
       total: rows.reduce((s, r) => s + r.count, 0),
+      // Every lead in range: linked senders, unmatched names and clients with no sender, plus corrections.
+      // null = n8n has no lead numbers for this range, so show "—" instead of a misleading total.
+      available,
+      overall: !available ? null : Math.max(0, (allLeads ?? [...agg.values()].reduce((s, a) => s + a.count, 0))
+        + adjList.reduce((s, a) => s + (Number(a.delta) || 0), 0)),
     };
-  }, [days.data, adjustments.data, senders.data, settingsDocs.data, startKey, todayKey, span.days]);
+  }, [days.data, adjustments.data, senders.data, settingsDocs.data, agency.rows, agency.updatedAt, range, startKey, todayKey, span.days]);
 
+  const agencyLoading = agency.status === 'idle' || agency.status === 'loading';
   return {
     ...result,
     win,
     span,
-    loading: days.loading || senders.loading,
-    error: days.error || senders.error || settingsDocs.error || adjustments.error,
+    loading: days.loading || senders.loading || (agencyLoading && !days.data.length),
+    // leadDailyCounts may be missing or blocked; that's fine while the dashboard data loads.
+    error: senders.error || settingsDocs.error || adjustments.error
+      || (result.source === 'events' && days.error && agency.status === 'error' ? days.error : null),
   };
 }

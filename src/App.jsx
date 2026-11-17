@@ -14,7 +14,7 @@ const ZipSubmit = lazy(() => import('./pages/ZipSubmit'));
 const ZipQueue = lazy(() => import('./pages/ZipQueue'));
 const Revenue = lazy(() => import('./pages/Revenue'));
 const MapDashboard = lazy(() => import('./pages/MapDashboard'));
-const SubAccounts = lazy(() => import('./pages/SubAccounts'));
+const SubAccounts = lazy(() => import('./pages/SubAccounts')); 
 const ZipLookup = lazy(() => import('./pages/ZipLookup'));
 const AddUser = lazy(() => import('./pages/AddUser'));
 const Account = lazy(() => import('./pages/Account'));

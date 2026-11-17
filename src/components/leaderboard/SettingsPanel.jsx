@@ -13,7 +13,8 @@ import { Badge, Button, Card, CardHeader, Field, Input, Select } from '../ui';
 // Square +/- buttons for the adjustment amount (plain buttons so their size stays exact).
 const stepBtn = 'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-[0_1px_2px_rgba(16,24,40,.05)] transition-colors hover:bg-slate-50 hover:border-slate-300 active:translate-y-px';
 
-const isSunday =(key) => new Date(`${key}T12:00:00Z`).getUTCDay() === 0;
+const byName = (a, b) => String(a.name || '').localeCompare(String(b.name || ''));
+const isSunday = (key) => new Date(`${key}T12:00:00Z`).getUTCDay() === 0;
 
 function Section({ title, subtitle, children }) {
   return (
@@ -43,12 +44,12 @@ export default function SettingsPanel({ lb }) {
   const defaultsValid = Number(defaults.defaultTarget) >= 1 && Number(defaults.idleMinutes) >= 5;
 
   // ---- senders
-  const active = lb.senders.filter((s) => s.active !== false).sort((a, b) => a.name.localeCompare(b.name));
-  const hidden = lb.senders.filter((s) => s.active === false).sort((a, b) => a.name.localeCompare(b.name));
+  const active = lb.senders.filter((s) => s.active !== false).sort(byName);
+  const hidden = lb.senders.filter((s) => s.active === false).sort(byName);
   const senderIds = new Set(lb.senders.map((s) => s.id));
   const candidates = useMemo(() => users
     .filter((u) => u.active && !senderIds.has(u.id))
-    .sort((a, b) => Number(b.department === SENDING_DEPARTMENT) - Number(a.department === SENDING_DEPARTMENT) || a.name.localeCompare(b.name)),
+    .sort((a, b) => Number(b.department === SENDING_DEPARTMENT) - Number(a.department === SENDING_DEPARTMENT) || byName(a, b)),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [users, lb.senders]);
   const [newSender, setNewSender] = useState({ userId: '', matchName: '' });

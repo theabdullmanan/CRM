@@ -2,7 +2,7 @@
  * Senders Leaderboard: shared constants and access checks.
  *
  * Data (all new collections, nothing existing is touched):
- *  - leadSendEvents/{ghlLeadId}       one per lead sent, written by n8n (audit trail + de-duplication)
+ *  - leadSendEvents/{ghlLeadId}       one per lead sent with the LEAD_TAG tag, written by n8n (audit trail + de-duplication, incl. tags)
  *  - leadDailyCounts/{businessDayKey} { day, counts.{senderKey}, last.{senderKey}, names.{senderKey} }, written by n8n
  *  - leadAdjustments/{id}             admin corrections (+/-) with a reason; never edited or deleted
  *  - leaderboardSenders/{userId}      who is on the board, their GHL name (matchName) and target override
@@ -11,6 +11,8 @@
 import { isAdminRole } from './constants';
 
 export const SENDING_DEPARTMENT = 'Sending Department';
+/** Only GHL contacts with this tag are counted. n8n filters on it before writing (docs/leaderboard-n8n.md). */
+export const LEAD_TAG = 'lead';
 export const LEADERBOARD_DEFAULTS = { defaultTarget: 40, idleMinutes: 60 };
 export const DISPLAY_ROLE = 'display';
 

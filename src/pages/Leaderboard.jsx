@@ -4,14 +4,12 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLeaderboard } from '../hooks/useLeaderboard';
 import { useMinuteTick } from '../hooks/useBusinessDayWindow';
 import { centralClock } from '../lib/businessDay';
-import { canManageLeaderboard, RANGES } from '../lib/leaderboard';
-import { Podium, RankList } from '../components/leaderboard/Board';
+import { canManageLeaderboard, LEAD_TAG, RANGES } from '../lib/leaderboard';
 import SettingsPanel from '../components/leaderboard/SettingsPanel';
-import { Button, Card, EmptyState, PageHeader, PageLoader, StatCard, Tabs } from '../components/ui';
+import TeamPerformance from '../components/leaderboard/TeamPerformance';
+import { Button, Card, PageHeader, StatCard, Tabs } from '../components/ui';
 
 const fmtStart = (d) => d.toLocaleString('en-US', { timeZone: 'America/Chicago', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-
-const EMPTY_TEXT = { today: 'No leads sent yet today', week: 'No leads sent yet this week', month: 'No leads sent yet this month' };
 
 export default function Leaderboard() {
   const { role } = useAuth();
@@ -32,7 +30,7 @@ export default function Leaderboard() {
       <PageHeader
         icon={Trophy}
         title="Leaderboard"
-        subtitle="Leads each sender has sent to clients, live. All times in Central time."
+        subtitle={`Leads tagged "${LEAD_TAG}" that each sender has sent to clients, live. All times in Central time.`}
         actions={(
           <>
             <Tabs tabs={RANGES} value={range} onChange={setRange} />
@@ -45,13 +43,24 @@ export default function Leaderboard() {
       {manager && showSettings && <SettingsPanel lb={lb} />}
 
       <div className="mb-5 grid gap-4 sm:grid-cols-3">
-        <StatCard label="Leads sent" value={lb.loading ? 0 : lb.total} icon={Trophy} tone="brand" sub={range === 'today' ? `as of ${centralClock(new Date(now))} CT` : `${span.days} business days`} />
+        <StatCard label="Leads sent" value={lb.loading ? 0 : (lb.overall ?? '—')} icon={Trophy} tone="brand"
+          sub={lb.overall === null && !lb.loading
+            ? `No ${range === 'today' ? "today's" : range === 'week' ? 'weekly' : 'monthly'} lead numbers from n8n yet`
+            : `All "${LEAD_TAG}" leads · ${range === 'today' ? `as of ${centralClock(new Date(now))} CT` : range === 'week' && lb.fallback ? 'last 7 days' : `${span.days} business days`}`} />
         <StatCard label="Hit their target" value={lb.loading ? 0 : hit} icon={Target} tone="emerald" sub={`of ${rows.length} sender${rows.length === 1 ? '' : 's'}`} />
         <StatCard label="Senders on the board" value={lb.loading ? 0 : rows.length} icon={Users} tone="violet"
-          sub={manager && lb.unmatched.length ? `${lb.unmatched.length} unmatched name${lb.unmatched.length === 1 ? '' : 's'} in Settings` : 'Ranked by leads sent'} />
+          sub={lb.unmatched.length ? `${lb.unmatched.length} shown without a Settings link` : 'Ranked by leads sent'} />
       </div>
 
-      <p className="mb-4 text-xs text-slate-500">{rangeText}</p>
+      <p className="mb-4 text-xs text-slate-500">
+        {rangeText}
+        {lb.source === 'dashboard' && (
+          <> · Counts from n8n's agency data{lb.dataUpdatedAt ? `, updated ${new Date(lb.dataUpdatedAt).toLocaleString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit', month: 'short', day: 'numeric' })} CT` : ''}, credited to each client's sender
+            {lb.fallback && range === 'week' && ' (last 7 days, from the status sheet)'}
+            {lb.fallback && range === 'today' && ' (from the status sheet)'}
+            {range === 'month' && !lb.available && ' (GHL monthly counts not available yet)'}</>
+        )}
+      </p>
 
       {lb.error && (
         <Card className="mb-4 p-4 text-[13px] text-down-700">
@@ -59,20 +68,10 @@ export default function Leaderboard() {
         </Card>
       )}
 
-      {lb.loading ? <PageLoader /> : rows.length === 0 ? (
-        <Card>
-          <EmptyState icon={Trophy} title="No senders on the leaderboard yet"
-            message={manager ? 'Open Settings to add senders and link their GHL names.' : 'An admin will add senders soon.'} />
-        </Card>
-      ) : (
-        <div className="space-y-5">
-          {lb.total === 0 && (
-            <div className="rounded-xl border border-dashed border-slate-200 px-4 py-3 text-center text-[13px] text-slate-500">{EMPTY_TEXT[range]}</div>
-          )}
-          <Podium rows={rows} now={now} idleMinutes={settings.idleMinutes} span={span} range={range} />
-          <RankList rows={rows} now={now} idleMinutes={settings.idleMinutes} span={span} range={range} />
-        </div>
-      )}
+      {/* The ranked list lives in one place only — Team performance below — so it's never
+          shown twice with potentially different numbers. The podium view is still on the
+          dedicated TV page (/leaderboard/tv) for the wall display. */}
+      <TeamPerformance range={range} senders={lb.senders || []} adjustments={lb.adjustments || []} />
     </>
   );
 }

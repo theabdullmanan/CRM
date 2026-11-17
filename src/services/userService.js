@@ -8,6 +8,27 @@ import { app, auth, db } from '../lib/firebase';
 import { ROLES } from '../lib/constants';
 import { logActivity, notifyUsers } from './notifications';
 
+const WELCOME_WEBHOOK = 'https://server.whitestonemedia.cloud/webhook/Crm-Welcome';
+const LEADERBOARD_LINK = 'https://crm-eight-plum-85.vercel.app/leaderboard';
+
+/**
+ * Tells n8n a new login was created, so it can send its own welcome message.
+ * Sends the new person's name, email, their starting password and the Leaderboard link —
+ * nothing else. The password is the one just set for their account (never the admin's own).
+ * Never blocks or fails account creation: a webhook hiccup is logged, not thrown.
+ */
+async function notifyWelcomeWebhook({ name, email, password }) {
+  try {
+    await fetch(WELCOME_WEBHOOK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password, link: LEADERBOARD_LINK }),
+    });
+  } catch (e) {
+    console.error('[welcome webhook]', e);
+  }
+}
+
 /**
  * Admin creates a login for a team member.
  *
@@ -48,6 +69,7 @@ export async function createUserAccount({ name, email, password, role, departmen
       link: '/account',
       type: 'info',
     }).catch(() => {});
+    await notifyWelcomeWebhook({ name: name.trim(), email: email.trim().toLowerCase(), password });
     logActivity(admin, 'user.create', { name: name.trim(), role });
     return cred.user.uid;
   } finally {
