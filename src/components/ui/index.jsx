@@ -90,6 +90,17 @@ export function StatusBadge({ map, value }) {
   return <Badge color={s.color} dot>{s.label}</Badge>;
 }
 
+/** Shown while a Firestore collection is still serving its local cache, before the server-confirmed figures land. */
+export function SyncHint({ show, className }) {
+  if (!show) return null;
+  return (
+    <span className={cn('inline-flex items-center gap-1.5 text-[11.5px] font-medium text-amber-600', className)}>
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
+      Syncing latest figures…
+    </span>
+  );
+}
+
 /** ▲ +4.2% / ▼ −3.1% change indicator in market colours. */
 export function Delta({ value, className, suffix = '%', chip = true }) {
   if (value == null || !Number.isFinite(value)) return <span className={cn('text-xs text-slate-400', className)}>—</span>;

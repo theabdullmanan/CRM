@@ -14,7 +14,7 @@ import { useWhopSpend } from '../hooks/useWhopSpend';
 import { computeSpend, dailySeries, pctChange, withChange } from '../lib/spend';
 import { ROLES, TASK_PRIORITY } from '../lib/constants';
 import { cn, fmtDateTime, fromNow, money, toDate } from '../lib/utils';
-import { Avatar, Button, Card, CardHeader, Delta, EmptyState, MiniSpark, StatCard, StatusBadge } from '../components/ui';
+import { Avatar, Button, Card, CardHeader, Delta, EmptyState, MiniSpark, StatCard, StatusBadge, SyncHint } from '../components/ui';
 import { PriceChart } from '../components/charts';
 import { WorkflowBoard } from '../components/workflow';
 import { useAgency } from '../hooks/useAgency';
@@ -53,7 +53,7 @@ function greeting() {
 export default function Dashboard() {
   const { profile, role, can, settings } = useAuth();
   const navigate = useNavigate();
-  const { data: payments } = usePayments();
+  const { data: payments, fromCache: paymentsSyncing } = usePayments();
   const { data: myTasks } = useTasks('mine');
   const { data: mySubs } = useZipSubmissions(can('zipSubmit') ? { field: 'submittedBy', op: '==', value: profile.id } : null);
   const { data: queue } = useZipSubmissions(can('zipQueue') ? { field: 'status', op: 'in', value: ['pending', 'approved'] } : null);
@@ -65,9 +65,9 @@ export default function Dashboard() {
   );
 
   const agency = useAgency();
-  const { data: whopAccounts } = useWhopAccounts();
+  const { data: whopAccounts, loading: whopAccountsLoading } = useWhopAccounts();
   const activeWhopAccounts = useMemo(() => whopAccounts.filter((a) => a.active !== false), [whopAccounts]);
-  const whop = useWhopSpend(activeWhopAccounts);
+  const whop = useWhopSpend(activeWhopAccounts, whopAccountsLoading);
   const whopSpark = useMemo(() => dailySeries(whop.byDay, 30).map((d) => d.spend), [whop.byDay]);
   const spend = useMemo(() => computeSpend(payments), [payments]);
   // Payment entries carry amounts, so they're only shown to roles that can see revenue (admins).
@@ -158,6 +158,7 @@ export default function Dashboard() {
                   <Delta value={pctChange(t.today, t.yesterday)} />
                   <span className="text-xs text-slate-500">today</span>
                 </div>
+                <SyncHint show={paymentsSyncing} className="mt-1.5" />
               </div>
               <Link to="/revenue" className="flex items-center gap-1 text-[13px] font-medium text-slate-600 transition-colors hover:text-slate-900">Full report <ArrowRight className="h-3.5 w-3.5" /></Link>
             </div>

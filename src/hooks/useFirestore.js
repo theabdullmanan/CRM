@@ -10,22 +10,25 @@ import { isPreview, previewDb } from '../lib/preview';
  */
 export function useCollection(buildQuery, deps = [], preview) {
   const [state, setState] = useState(() =>
-    isPreview ? { data: preview?.() || [], loading: false, error: null } : { data: [], loading: true, error: null });
+    isPreview ? { data: preview?.() || [], loading: false, error: null, fromCache: false } : { data: [], loading: true, error: null, fromCache: false });
 
   useEffect(() => {
     if (isPreview) {
-      setState({ data: preview?.() || [], loading: false, error: null });
+      setState({ data: preview?.() || [], loading: false, error: null, fromCache: false });
       return undefined;
     }
     const q = buildQuery();
     if (!q) {
-      setState({ data: [], loading: false, error: null });
+      setState({ data: [], loading: false, error: null, fromCache: false });
       return undefined;
     }
     setState((s) => ({ ...s, loading: true }));
+    // includeMetadataChanges so a second, server-confirmed snapshot follows the instant local-cache
+    // one — `fromCache` lets pages show a "syncing" hint instead of silently swapping numbers.
     return onSnapshot(
       q,
-      (snap) => setState({ data: snap.docs.map((d) => ({ id: d.id, ...d.data() })), loading: false, error: null }),
+      { includeMetadataChanges: true },
+      (snap) => setState({ data: snap.docs.map((d) => ({ id: d.id, ...d.data() })), loading: false, error: null, fromCache: snap.metadata.fromCache }),
       (error) => {
         console.error('[useCollection]', error);
         // Keep what's already on screen; wiping it made cached rows flash and then vanish.

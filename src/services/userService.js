@@ -97,12 +97,43 @@ export async function updateSuperAdmin(target, patch, superAdmin) {
 }
 
 /**
- * Admin / super admin deletes a user: removes their profile, so they lose all access at once.
- * Their sign-in (email + password) can only be removed from the server side, so it stays in
- * Firebase Authentication until deleted there; signing in just shows "Account removed".
+ * Calls the `/api/delete-user` Vercel function, which deletes the target's Firebase
+ * Authentication sign-in using the Admin SDK — the one thing the client can never do for
+ * someone else's account (it can only ever delete its OWN). Throws only on an explicit
+ * permission denial from the backend (the admin genuinely isn't allowed to delete this person);
+ * any other failure (route not deployed yet, offline, server misconfigured) is logged and
+ * swallowed so it never blocks the Firestore profile deletion that actually revokes access —
+ * the target's email just won't be free to reuse again until this call succeeds.
+ */
+async function deleteUserAuth(targetUid) {
+  let res;
+  try {
+    const idToken = await auth.currentUser.getIdToken();
+    res = await fetch('/api/delete-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+      body: JSON.stringify({ uid: targetUid }),
+    });
+  } catch (e) {
+    console.error('[delete-user]', e);
+    return;
+  }
+  if (res.ok) return;
+  const body = await res.json().catch(() => ({}));
+  if (res.status === 403) throw new Error(body.error || "You don't have permission to delete this account.");
+  console.error('[delete-user]', res.status, body.error);
+}
+
+/**
+ * Admin / super admin deletes a user: removes their profile (so they lose all access at once)
+ * and their Firebase Authentication sign-in, so the same email can be used to add someone back
+ * in later. The auth deletion is called first, while the Firestore doc still exists — the
+ * backend reads the target's role from it to enforce the same admin/super-admin rule as
+ * firestore.rules.
  */
 export async function deleteUserAccount(target, actor) {
   if (!db) throw new Error('Preview mode — connect Firebase to delete accounts.');
+  await deleteUserAuth(target.id);
   await deleteDoc(doc(db, 'users', target.id));
   logActivity(actor, 'user.delete', { name: target.name, email: target.email, role: target.role });
 }

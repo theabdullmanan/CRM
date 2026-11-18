@@ -60,6 +60,7 @@ export async function fetchWhopSpend(accounts, { now = new Date(), signal } = {}
   const totals = { today: 0, yesterday: 0, week: 0, prevWeek: 0, d30: 0, prevD30: 0 };
   const byDay = {};
   const byCustomerD30 = {}; // Whop member/customer id => their net spend in the last 30 days
+  const transactions = []; // individual payments in the last 30 days, for the transaction list
 
   for (const p of payments) {
     const amount = netAmount(p);
@@ -75,11 +76,24 @@ export async function fetchWhopSpend(accounts, { now = new Date(), signal } = {}
       byDay[key] = (byDay[key] || 0) + amount;
       const who = p.member_id || p.user?.id || p.customer_email || p.id;
       byCustomerD30[who] = (byCustomerD30[who] || 0) + amount;
+      transactions.push({
+        id: p.id,
+        paidAt: p.paid_at,
+        amount,
+        currency: p.currency,
+        customerName: p.user?.name || p.user?.username || p.billing_address?.name || null,
+        customerEmail: p.customer_email || null,
+        product: p.line_items?.[0]?.product_title || null,
+        paymentMethod: p.payment_method_type || null,
+        status: p.status,
+        substatus: p.substatus,
+        refunded: money(p.refunded_amount) > 0,
+      });
     }
     if (t >= prevD30Start && t < d30Start) totals.prevD30 += amount;
   }
 
-  return { totals, byDay, byCustomerD30, count: payments.length };
+  return { totals, byDay, byCustomerD30, transactions, count: payments.length };
 }
 
 // Far enough back to predate any Whop account; the API just returns zero-value points before it existed.

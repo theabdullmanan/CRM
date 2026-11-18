@@ -13,7 +13,7 @@ import { PriceChart } from '../components/charts';
 import { CLIENT_STATUS, PAYMENT_TYPES, ZIP_STATUS } from '../lib/constants';
 import { downloadCsv, fmtDate, fmtDateTime, friendlyError, money, num } from '../lib/utils';
 import {
-  Avatar, Badge, Button, Card, CardHeader, Delta, EmptyState, PageLoader, Select, StatCard, StatusBadge, Table, Td, Th, useConfirm,
+  Avatar, Badge, Button, Card, CardHeader, Delta, EmptyState, PageLoader, Select, StatCard, StatusBadge, SyncHint, Table, Td, Th, useConfirm,
 } from '../components/ui';
 import { ClientFormModal, SubAccountFormModal } from '../components/forms';
 import PaymentModal from '../components/PaymentModal';
@@ -29,7 +29,7 @@ export default function ClientDetail() {
   const { data: subs } = useSubAccounts(id);
   const { data: zips } = useZipSubmissions({ field: 'clientId', op: '==', value: id });
   const { data: requests } = useDataRequests();
-  const { data: payments } = usePayments(id);
+  const { data: payments, fromCache: paymentsSyncing } = usePayments(id);
   const { data: allClients } = useClients();
 
   const [editClient, setEditClient] = useState(false);
@@ -106,6 +106,7 @@ export default function ClientDetail() {
 
       {can('revenue') && (
         <>
+          <SyncHint show={paymentsSyncing} className="mb-3" />
           <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard label="Today's spend" value={money(t.today)} icon={DollarSign} tone="emerald" delta={pctChange(t.today, t.yesterday)} deltaLabel="vs yesterday" spark={spark.slice(-14)} />
             <StatCard label="Last 7 days" value={money(t.week)} icon={CalendarDays} tone="sky" delta={pctChange(t.week, t.prevWeek)} deltaLabel="vs prior 7d" spark={spark.slice(-7)} />

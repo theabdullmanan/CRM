@@ -4,14 +4,14 @@ import Papa from 'papaparse';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import {
-  DollarSign, CalendarDays, TrendingUp, Infinity as InfinityIcon, Plus, Upload, Zap, Download, ArrowUpDown, Crown, Users, Receipt, CandlestickChart, LineChart,
+  DollarSign, CalendarDays, TrendingUp, Infinity as InfinityIcon, Plus, Upload, Zap, Download, ArrowUpDown, Crown, Users, Receipt, CandlestickChart, LineChart, CreditCard,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useClients, usePayments, useWhopAccounts } from '../hooks/useData';
 import { useWhopLifetime, useWhopSpend } from '../hooks/useWhopSpend';
 import { computeSpend, dailySeries, pctChange, toCandles, withChange } from '../lib/spend';
-import { downloadCsv, friendlyError, money } from '../lib/utils';
-import { Badge, Button, Card, CardHeader, Delta, EmptyState, Field, Input, MiniSpark, Modal, PageHeader, PageLoader, SearchInput, StatCard, Table, Tabs, Td, Th } from '../components/ui';
+import { downloadCsv, friendlyError, fmtDateTime, money } from '../lib/utils';
+import { Badge, Button, Card, CardHeader, Delta, EmptyState, Field, Input, MiniSpark, Modal, PageHeader, PageLoader, SearchInput, StatCard, SyncHint, Table, Tabs, Td, Th } from '../components/ui';
 import { CandleChart, PriceChart, RankBars } from '../components/charts';
 import PaymentModal from '../components/PaymentModal';
 import { importPayments, logDailyCharges } from '../services/paymentService';
@@ -28,7 +28,7 @@ const COLS = [
 
 export default function Revenue() {
   const { profile, settings } = useAuth();
-  const { data: payments, loading } = usePayments();
+  const { data: payments, loading, fromCache: paymentsSyncing } = usePayments();
   const { data: clients } = useClients();
   const [range, setRange] = useState('90');
   const [kind, setKind] = useState('line');
@@ -40,10 +40,10 @@ export default function Revenue() {
   const [busy, setBusy] = useState(false);
   const fileRef = useRef(null);
 
-  const { data: whopAccounts } = useWhopAccounts();
+  const { data: whopAccounts, loading: whopAccountsLoading } = useWhopAccounts();
   const activeWhopAccounts = useMemo(() => whopAccounts.filter((a) => a.active !== false), [whopAccounts]);
-  const whop = useWhopSpend(activeWhopAccounts);
-  const whopLifetime = useWhopLifetime(activeWhopAccounts);
+  const whop = useWhopSpend(activeWhopAccounts, whopAccountsLoading);
+  const whopLifetime = useWhopLifetime(activeWhopAccounts, whopAccountsLoading);
   const whopSpark = useMemo(() => dailySeries(whop.byDay, 30).map((d) => d.spend), [whop.byDay]);
   const whopPayingCustomers = useMemo(() => Object.values(whop.byCustomerD30).filter((v) => v > 0).length, [whop.byCustomerD30]);
   const whopAvgMonthly = whopPayingCustomers ? whop.totals.d30 / whopPayingCustomers : 0;
@@ -112,6 +112,8 @@ export default function Revenue() {
         }
       />
 
+      <SyncHint show={paymentsSyncing} className="mb-4" />
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {whop.status === 'empty' ? (
           <>
@@ -165,9 +167,71 @@ export default function Revenue() {
       </div>
 
       {payments.length === 0 ? (
-        <Card className="mt-6">
-          <EmptyState icon={DollarSign} title="No payments yet" message="Record payments, import a CSV (date, client, amount, type), or log daily charges from each client's daily rate." />
-        </Card>
+        whop.status === 'ready' || whop.status === 'refreshing' ? (
+          whop.transactions.length === 0 ? (
+            <Card className="mt-6">
+              <EmptyState icon={CreditCard} title="No Whop payments in the last 30 days" message="Nothing has been paid through your connected Whop accounts in this window yet." />
+            </Card>
+          ) : (
+            <Card className="mt-6 overflow-hidden">
+              <CardHeader
+                title="Live Whop payments"
+                subtitle={`Last 30 days · merged from ${activeWhopAccounts.length} connected account${activeWhopAccounts.length === 1 ? '' : 's'}`}
+                actions={
+                  <Button size="sm" variant="secondary" icon={Download} onClick={() => downloadCsv(`whop-payments-${format(new Date(), 'yyyy-MM-dd')}.csv`, whop.transactions.map((tx) => ({
+                    date: tx.paidAt, account: tx.accountLabel, customer: tx.customerName || '', email: tx.customerEmail || '', product: tx.product || '', amount: tx.amount.toFixed(2), paymentMethod: tx.paymentMethod || '', refunded: tx.refunded ? 'yes' : 'no',
+                  })))}>Export</Button>
+                }
+              />
+              <Table>
+                <thead>
+                  <tr>
+                    <Th>Date</Th>
+                    <Th>Customer</Th>
+                    <Th>Product</Th>
+                    <Th>Account</Th>
+                    <Th>Method</Th>
+                    <Th className="text-right">Amount</Th>
+                    <Th>Status</Th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {whop.transactions.slice(0, 150).map((tx) => (
+                    <tr key={tx.id} className="hover:bg-slate-50">
+                      <Td className="whitespace-nowrap text-[12.5px] text-slate-500">{fmtDateTime(tx.paidAt)}</Td>
+                      <Td>
+                        <p className="text-[13px] font-medium text-slate-900">{tx.customerName || '—'}</p>
+                        {tx.customerEmail && <p className="text-xs text-slate-500">{tx.customerEmail}</p>}
+                      </Td>
+                      <Td className="text-[12.5px] text-slate-600">{tx.product || '—'}</Td>
+                      <Td className="text-[12.5px] text-slate-500">{tx.accountLabel}</Td>
+                      <Td className="text-[12.5px] capitalize text-slate-500">{tx.paymentMethod || '—'}</Td>
+                      <Td className="text-right font-mono text-[12.5px] font-semibold tabular-nums text-slate-900">{money(tx.amount)}</Td>
+                      <Td>{tx.refunded ? <Badge color="amber">Refunded</Badge> : <Badge color="emerald">Paid</Badge>}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+              {whop.transactions.length > 150 && (
+                <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-400">
+                  Showing the 150 most recent of {whop.transactions.length} payments in the last 30 days. Export CSV for the full list.
+                </p>
+              )}
+            </Card>
+          )
+        ) : (
+          <Card className="mt-6">
+            <EmptyState
+              icon={DollarSign}
+              title="No payments yet"
+              message={
+                whop.status === 'empty'
+                  ? "Connect your Whop accounts in Settings to see live payments here, or record payments, import a CSV, or log daily charges from each client's daily rate."
+                  : whop.status === 'error' ? "Couldn't reach Whop — check the API keys in Settings." : 'Loading live Whop data…'
+              }
+            />
+          </Card>
+        )
       ) : (
         <>
           <div className="mt-6 grid gap-6 xl:grid-cols-5">

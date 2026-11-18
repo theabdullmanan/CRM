@@ -44,6 +44,20 @@ A custom CRM (React + Firebase) that replaces the Google Sheets + Slack workflow
 
 Deploy to Firebase Hosting: `npm run deploy`.
 
+### Deleting a team member (`api/delete-user.js`)
+
+The client removes a deleted person's Firestore profile on its own, which instantly cuts off access — but it can never delete someone ELSE's Firebase Authentication sign-in (only your own account can self-delete). Without that half, a deleted person's email stays registered forever and can't be reused. `api/delete-user.js` is a Vercel serverless function (not a Firebase Cloud Function, so **no Blaze plan needed**) that uses the Firebase Admin SDK to do exactly that, gated by the same admin/super-admin rule as `firestore.rules`.
+
+It needs one-time setup in your Vercel project (and `.env.local` for local testing), reading a Firebase service-account key:
+1. Firebase Console → Project settings → **Service accounts** → **Generate new private key** (downloads a JSON file).
+2. Add these as environment variables (Vercel project → Settings → Environment Variables, and your local `.env.local`):
+   - `FIREBASE_PROJECT_ID` → the JSON's `project_id`
+   - `FIREBASE_CLIENT_EMAIL` → the JSON's `client_email`
+   - `FIREBASE_PRIVATE_KEY` → the JSON's `private_key` (keep the `\n` sequences as-is, quoted)
+3. Redeploy. Until this is set, deleting a user still revokes access immediately — their email just won't be free to reuse yet.
+
+Locally, `npm run dev` (plain Vite) doesn't serve `/api/*`; use `vercel dev` instead to test the deletion end-to-end, or just verify it after a Vercel deploy/preview.
+
 ## Data model (Firestore)
 
 | Collection | Purpose |
