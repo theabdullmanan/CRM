@@ -4,7 +4,12 @@ import { logActivity } from './notifications';
 
 const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
 
-export async function saveClient(data, profile, id) {
+/**
+ * `previousStatus` (the client's status before this save, if editing) is only used to decide
+ * whether to write a `statusHistory` record — it's never written to the client doc itself.
+ * Saving behavior is otherwise identical to before this was added.
+ */
+export async function saveClient(data, profile, id, previousStatus) {
   const payload = clean({
     name: data.name?.trim(),
     contactName: data.contactName?.trim() || '',
@@ -19,14 +24,32 @@ export async function saveClient(data, profile, id) {
     updatedAt: serverTimestamp(),
   });
   if (id) {
-    await updateDoc(doc(db, 'clients', id), payload);
+    if (previousStatus && previousStatus !== payload.status) {
+      const batch = writeBatch(db);
+      batch.update(doc(db, 'clients', id), { ...payload, statusChangedAt: serverTimestamp() });
+      batch.set(doc(collection(db, 'statusHistory')), {
+        clientId: id,
+        csmId: payload.csmId || '',
+        fromStatus: previousStatus,
+        toStatus: payload.status,
+        changedAt: serverTimestamp(),
+        changedBy: profile.id,
+      });
+      await batch.commit();
+    } else {
+      await updateDoc(doc(db, 'clients', id), payload);
+    }
     logActivity(profile, 'client.update', { name: payload.name });
     return id;
   }
-  const ref = await addDoc(collection(db, 'clients'), { ...payload, createdAt: serverTimestamp(), createdBy: profile.id });
+  const ref = await addDoc(collection(db, 'clients'), { ...payload, ghlLocationIds: [], createdAt: serverTimestamp(), createdBy: profile.id });
   logActivity(profile, 'client.create', { name: payload.name });
   return ref.id;
 }
+
+/** Admin-only linking of GHL sub-accounts (System B) to this CRM client, for the My Clients leads column. */
+export const linkGhlLocations = (clientId, ghlLocationIds) =>
+  updateDoc(doc(db, 'clients', clientId), { ghlLocationIds, updatedAt: serverTimestamp() });
 
 export async function deleteClient(client) {
   const subs = await getDocs(query(collection(db, 'subAccounts'), where('clientId', '==', client.id)));

@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import Layout from './components/layout/Layout';
 import { PageLoader } from './components/ui';
+import { canViewCsmFeatures } from './lib/csmClients';
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
 import PendingApproval from './pages/auth/PendingApproval';
@@ -25,6 +26,8 @@ const Notifications = lazy(() => import('./pages/Notifications'));
 const SuperAdmin = lazy(() => import('./pages/SuperAdmin'));
 const Leaderboard = lazy(() => import('./pages/Leaderboard'));
 const LeaderboardTv = lazy(() => import('./pages/LeaderboardTv'));
+const CsmLeaderboard = lazy(() => import('./pages/CsmLeaderboard'));
+const MyClients = lazy(() => import('./pages/MyClients'));
 
 function FullScreenLoader() {
   return <div className="flex min-h-screen items-center justify-center"><PageLoader /></div>;
@@ -38,9 +41,13 @@ function RequireAuth({ children }) {
   return children;
 }
 
-function Guard({ area, children }) {
-  const { can } = useAuth();
-  return can(area) ? children : <Navigate to="/" replace />;
+// `check` is for access rules that don't fit the role-based `can(area)` map — e.g. the CSM
+// features, which gate on department rather than role. Existing callers (area only) are
+// unaffected; `check` just gives Guard a second way to decide.
+function Guard({ area, check, children }) {
+  const auth = useAuth();
+  const ok = check ? check(auth) : auth.can(area);
+  return ok ? children : <Navigate to="/" replace />;
 }
 
 function PublicOnly({ children }) {
@@ -80,6 +87,8 @@ export default function App() {
                 <Route path="settings" element={<Guard area="settings"><Settings /></Guard>} />
                 <Route path="super-admin" element={<Guard area="superAdmin"><SuperAdmin /></Guard>} />
                 <Route path="leaderboard" element={<Guard area="leaderboard"><Leaderboard /></Guard>} />
+                <Route path="csm-leaderboard" element={<Guard check={({ profile }) => canViewCsmFeatures(profile)}><CsmLeaderboard /></Guard>} />
+                <Route path="my-clients" element={<Guard check={({ profile }) => canViewCsmFeatures(profile)}><MyClients /></Guard>} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>

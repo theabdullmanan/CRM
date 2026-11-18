@@ -39,6 +39,16 @@ export function useClients() {
   return { ...res, data: [...res.data].sort(byName) };
 }
 
+/** One CSM's own clients only, via a real where('csmId','==', csmId) query — used by My Clients. */
+export function useClientsForCsm(csmId) {
+  const res = useCollection(
+    () => (csmId ? query(collection(db, 'clients'), where('csmId', '==', csmId)) : null),
+    [csmId],
+    () => (csmId ? P.clients.filter((c) => c.csmId === csmId) : []),
+  );
+  return { ...res, data: [...res.data].sort(byName) };
+}
+
 export function useSubAccounts(clientId) {
   const res = useCollection(
     () => (clientId ? query(collection(db, 'subAccounts'), where('clientId', '==', clientId)) : collection(db, 'subAccounts')),

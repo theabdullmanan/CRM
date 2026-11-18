@@ -1,7 +1,11 @@
-import { addDoc, collection, deleteDoc, doc, serverTimestamp, Timestamp, writeBatch } from 'firebase/firestore';
+import {
+  collection, doc, getDoc, serverTimestamp, Timestamp, writeBatch,
+} from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { dayKey } from '../lib/spend';
+import { countsAsSpend, dayKey } from '../lib/spend';
+import { toDate } from '../lib/utils';
 import { logActivity } from './notifications';
+import { queuePaymentAggregateDelta, recalculateCsmDailyTotal } from './csmDailyTotals';
 
 const atNoon = (d) => {
   const x = new Date(d);
@@ -11,7 +15,9 @@ const atNoon = (d) => {
 
 export async function addPayment({ client, subAccount, amount, date, type, note }, profile) {
   const d = atNoon(date);
-  await addDoc(collection(db, 'payments'), {
+  const day = dayKey(d);
+  const batch = writeBatch(db);
+  batch.set(doc(collection(db, 'payments')), {
     clientId: client.id,
     clientName: client.name,
     subAccountId: subAccount?.id || null,
@@ -20,19 +26,39 @@ export async function addPayment({ client, subAccount, amount, date, type, note 
     type,
     note: note || '',
     date: Timestamp.fromDate(d),
-    day: dayKey(d),
+    day,
     createdBy: profile.id,
     createdByName: profile.name,
     createdAt: serverTimestamp(),
   });
+  queuePaymentAggregateDelta(batch, { day, type, amount: Number(amount), csmId: client.csmId, csmName: client.csmName }, 1);
+  await batch.commit();
   logActivity(profile, 'payment.add', { client: client.name, amount: Number(amount), type });
 }
 
-export const deletePayment = (p) => deleteDoc(doc(db, 'payments', p.id));
+/**
+ * Deletes one payment and, if it counted toward a CSM's daily total, reverses that contribution
+ * on the day the payment itself belongs to (`p.day`) — not today, since a payment can be deleted
+ * long after the day it was recorded for.
+ */
+export async function deletePayment(p) {
+  const batch = writeBatch(db);
+  batch.delete(doc(db, 'payments', p.id));
+  if (countsAsSpend(p) && p.clientId) {
+    const clientSnap = await getDoc(doc(db, 'clients', p.clientId));
+    const client = clientSnap.exists() ? clientSnap.data() : null;
+    const day = p.day || dayKey(toDate(p.date) || new Date());
+    queuePaymentAggregateDelta(batch, { day, type: p.type, amount: Number(p.amount) || 0, csmId: client?.csmId, csmName: client?.csmName }, -1);
+  }
+  await batch.commit();
+}
 
 /**
  * Logs one day's charge for every active client that has a daily rate.
- * Uses a deterministic doc id so running it twice for the same day never double-counts.
+ * Uses a deterministic doc id so running it twice for the same day never double-counts the
+ * payment itself — but re-running WOULD double-count the aggregate's running total, since it's
+ * an increment, not a replace. The recalculate pass right after every run is what guarantees
+ * `csmDailyTotals/{key}` is exactly right regardless of how many times this gets re-run.
  */
 export async function logDailyCharges(clients, date, profile) {
   const d = atNoon(date);
@@ -54,9 +80,11 @@ export async function logDailyCharges(clients, date, profile) {
         createdByName: profile.name,
         createdAt: serverTimestamp(),
       });
+      queuePaymentAggregateDelta(batch, { day: key, type: 'daily', amount: Number(c.dailyRate), csmId: c.csmId, csmName: c.csmName }, 1);
     });
     await batch.commit();
   }
+  await recalculateCsmDailyTotal(key, clients);
   logActivity(profile, 'payment.daily', { day: key, clients: eligible.length });
   return eligible.length;
 }
@@ -87,9 +115,11 @@ export async function importPayments(rows, clients, profile) {
     else ok.push({ client, amount, date: atNoon(date), type, note: r.note || 'Imported' });
   });
 
+  const touchedDays = new Set();
   for (let i = 0; i < ok.length; i += 400) {
     const batch = writeBatch(db);
     ok.slice(i, i + 400).forEach((p) => {
+      const day = dayKey(p.date);
       batch.set(doc(collection(db, 'payments')), {
         clientId: p.client.id,
         clientName: p.client.name,
@@ -98,14 +128,19 @@ export async function importPayments(rows, clients, profile) {
         type: p.type,
         note: p.note,
         date: Timestamp.fromDate(p.date),
-        day: dayKey(p.date),
+        day,
         createdBy: profile.id,
         createdByName: profile.name,
         createdAt: serverTimestamp(),
       });
+      queuePaymentAggregateDelta(batch, { day, type: p.type, amount: p.amount, csmId: p.client.csmId, csmName: p.client.csmName }, 1);
+      touchedDays.add(day);
     });
     await batch.commit();
   }
+  // Same reasoning as logDailyCharges: recalculate every day this import touched, so a re-run
+  // (or any mid-batch failure) can never leave csmDailyTotals out of sync with real payments.
+  await Promise.all([...touchedDays].map((day) => recalculateCsmDailyTotal(day, clients)));
   if (ok.length) logActivity(profile, 'payment.import', { rows: ok.length });
   return { imported: ok.length, errors };
 }

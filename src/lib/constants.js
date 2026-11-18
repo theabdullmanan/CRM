@@ -115,6 +115,7 @@ export const TASK_PRIORITY = {
 export const CLIENT_STATUS = {
   active: { label: 'Active', color: 'emerald' },
   onboarding: { label: 'Onboarding', color: 'sky' },
+  no_contacts: { label: 'No Contacts', color: 'violet' },
   paused: { label: 'Paused', color: 'amber' },
   churned: { label: 'Churned', color: 'slate' },
 };

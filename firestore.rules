@@ -90,6 +90,21 @@ service cloud.firestore {
       allow delete: if leadership();
     }
 
+    // One record per client status change — a permanent audit log only. My Clients' "Off"
+    // metric reads clients/{id}.statusChangedAt directly instead (so it still works after a
+    // client is reassigned to a different CSM); nothing queries this collection for that.
+    // `csmId` is copied onto the record at write time so a CSM's own read stays a same-document
+    // check, not a cross-document get() into clients/{id} — same reasoning as csmDailyTotals
+    // below. `changedBy`/`changedAt` are pinned to the real requester and server time so a
+    // client can't backdate or spoof who made a change.
+    match /statusHistory/{id} {
+      allow read: if leadership() || (active() && resource.data.csmId == request.auth.uid);
+      allow create: if hasRole(['admin', 'manager', 'csm'])
+        && request.resource.data.changedBy == request.auth.uid
+        && request.resource.data.changedAt == request.time;
+      allow update, delete: if false; // permanent log
+    }
+
     // ---------- zip code workflow ----------
     match /zipSubmissions/{id} {
       allow read: if active();
@@ -214,6 +229,20 @@ service cloud.firestore {
         && request.resource.data.day is string
         && request.resource.data.createdAt == request.time;
       allow update, delete: if false; // permanent log
+    }
+
+    // ---------- CSM Leaderboard (new collection only) ----------
+    // Per-CSM { name, total } for today only — no client names or payment details in this doc.
+    // Written exclusively by the app's own payment-writing code (addPayment / deletePayment /
+    // logDailyCharges / importPayments in paymentService.js, plus the admin "Recalculate"
+    // button), all of which already require isAdmin() to reach in the UI — so the write rule
+    // just mirrors payments' own write rule, same condition, nothing new granted.
+    function csmViewer() {
+      return leadership() || (active() && me().get('department', '').trim().lower() == 'client success department');
+    }
+    match /csmDailyTotals/{day} {
+      allow read: if csmViewer();
+      allow write: if isAdmin();
     }
 
     // ---------- everything else stays locked (same as the original dashboard rules) ----------

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useDocument } from '../hooks/useFirestore';
+import { useAgency } from '../hooks/useAgency';
 import { useClients, useDataRequests, usePayments, useSubAccounts, useZipSubmissions } from '../hooks/useData';
 import { computeSpend, dailySeries, pctChange, withChange } from '../lib/spend';
 import { PriceChart } from '../components/charts';
@@ -16,16 +17,18 @@ import {
   Avatar, Badge, Button, Card, CardHeader, Delta, EmptyState, PageLoader, Select, StatCard, StatusBadge, SyncHint, Table, Td, Th, useConfirm,
 } from '../components/ui';
 import { ClientFormModal, SubAccountFormModal } from '../components/forms';
+import { GhlMultiPicker } from '../components/GhlMultiPicker';
 import PaymentModal from '../components/PaymentModal';
-import { deleteClient, deleteSubAccount } from '../services/clientService';
+import { deleteClient, deleteSubAccount, linkGhlLocations } from '../services/clientService';
 import { deletePayment } from '../services/paymentService';
 
 export default function ClientDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const confirm = useConfirm();
-  const { can } = useAuth();
+  const { can, isAdmin } = useAuth();
   const { data: client, loading } = useDocument('clients', id);
+  const agency = useAgency();
   const { data: subs } = useSubAccounts(id);
   const { data: zips } = useZipSubmissions({ field: 'clientId', op: '==', value: id });
   const { data: requests } = useDataRequests();
@@ -174,6 +177,23 @@ export default function ClientDetail() {
           </div>
         )}
       </Card>
+
+      {isAdmin && (
+        <Card className="mb-6">
+          <CardHeader
+            title="Linked GHL sub-accounts"
+            subtitle="Admin-only. Links this client to its GoHighLevel sub-account(s) so the My Clients dashboard can show its lead counts."
+          />
+          <div className="p-5">
+            <GhlMultiPicker
+              rows={agency.rows}
+              value={client.ghlLocationIds || []}
+              disabled={agency.status !== 'ready'}
+              onChange={(ids) => linkGhlLocations(client.id, ids).catch((e) => toast.error(friendlyError(e)))}
+            />
+          </div>
+        </Card>
+      )}
 
       <div className="grid gap-6 xl:grid-cols-5">
         {/* Zip history */}

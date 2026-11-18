@@ -34,7 +34,7 @@ export function ClientFormModal({ open, onClose, client, onSaved }) {
     setBusy(true);
     try {
       const csm = csms.find((u) => u.id === form.csmId);
-      const id = await saveClient({ ...form, csmName: csm?.name || '' }, profile, client?.id);
+      const id = await saveClient({ ...form, csmName: csm?.name || '' }, profile, client?.id, client?.status);
       toast.success(client ? 'Client updated' : 'Client created');
       onSaved?.(id);
       onClose();
