@@ -7,7 +7,8 @@ import {
   DollarSign, CalendarDays, TrendingUp, Infinity as InfinityIcon, Plus, Upload, Zap, Download, ArrowUpDown, Crown, Users, Receipt, CandlestickChart, LineChart,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { useClients, usePayments } from '../hooks/useData';
+import { useClients, usePayments, useWhopAccounts } from '../hooks/useData';
+import { useWhopLifetime, useWhopSpend } from '../hooks/useWhopSpend';
 import { computeSpend, dailySeries, pctChange, toCandles, withChange } from '../lib/spend';
 import { downloadCsv, friendlyError, money } from '../lib/utils';
 import { Badge, Button, Card, CardHeader, Delta, EmptyState, Field, Input, MiniSpark, Modal, PageHeader, PageLoader, SearchInput, StatCard, Table, Tabs, Td, Th } from '../components/ui';
@@ -39,6 +40,15 @@ export default function Revenue() {
   const [busy, setBusy] = useState(false);
   const fileRef = useRef(null);
 
+  const { data: whopAccounts } = useWhopAccounts();
+  const activeWhopAccounts = useMemo(() => whopAccounts.filter((a) => a.active !== false), [whopAccounts]);
+  const whop = useWhopSpend(activeWhopAccounts);
+  const whopLifetime = useWhopLifetime(activeWhopAccounts);
+  const whopSpark = useMemo(() => dailySeries(whop.byDay, 30).map((d) => d.spend), [whop.byDay]);
+  const whopPayingCustomers = useMemo(() => Object.values(whop.byCustomerD30).filter((v) => v > 0).length, [whop.byCustomerD30]);
+  const whopAvgMonthly = whopPayingCustomers ? whop.totals.d30 / whopPayingCustomers : 0;
+  const whopHighValueCount = useMemo(() => Object.values(whop.byCustomerD30).filter((v) => v >= settings.highValueMonthly).length, [whop.byCustomerD30, settings.highValueMonthly]);
+
   const spend = useMemo(() => computeSpend(payments), [payments]);
   const series = useMemo(() => withChange(dailySeries(spend.byDay, Number(range))), [spend.byDay, range]);
   const candles = useMemo(() => toCandles(series, range === '30' ? 3 : 7), [series, range]);
@@ -49,8 +59,6 @@ export default function Revenue() {
   const values = series.map((d) => d.spend);
   const clientMap = useMemo(() => Object.fromEntries(clients.map((c) => [c.id, c])), [clients]);
 
-  const payingClients = spend.clients.filter((c) => c.d30 > 0);
-  const avgMonthly = payingClients.length ? spend.totals.d30 / payingClients.length : 0;
   const highValue = (c) => c.d30 >= settings.highValueMonthly;
 
   const rows = spend.clients
@@ -105,15 +113,55 @@ export default function Revenue() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Today" value={money(t.today)} icon={DollarSign} tone="emerald" delta={pctChange(t.today, t.yesterday)} deltaLabel="vs yesterday" spark={spark.slice(-14)} />
-        <StatCard label="Last 7 days" value={money(t.week)} icon={CalendarDays} tone="sky" delta={pctChange(t.week, t.prevWeek)} deltaLabel="vs prior 7d" spark={spark.slice(-7)} />
-        <StatCard label="Last 30 days" value={money(t.d30)} icon={TrendingUp} tone="brand" delta={pctChange(t.d30, t.prevD30)} deltaLabel="vs prior 30d" spark={spark} />
-        <StatCard label="Lifetime" value={money(t.lifetime)} icon={InfinityIcon} tone="violet" sub="Recurring spend only" />
+        {whop.status === 'empty' ? (
+          <>
+            <StatCard label="Today" value="$0" sub="Connect Whop accounts in Settings" icon={DollarSign} tone="emerald" />
+            <StatCard label="Last 7 days" value="$0" sub="Connect Whop accounts in Settings" icon={CalendarDays} tone="sky" />
+            <StatCard label="Last 30 days" value="$0" sub="Connect Whop accounts in Settings" icon={TrendingUp} tone="brand" />
+            <StatCard label="Lifetime" value="$0" sub="Connect Whop accounts in Settings" icon={InfinityIcon} tone="violet" />
+          </>
+        ) : whop.status === 'loading' || whop.status === 'idle' ? (
+          <>
+            <StatCard label="Today" value="…" sub="Loading live Whop data" icon={DollarSign} tone="emerald" />
+            <StatCard label="Last 7 days" value="…" sub="Loading live Whop data" icon={CalendarDays} tone="sky" />
+            <StatCard label="Last 30 days" value="…" sub="Loading live Whop data" icon={TrendingUp} tone="brand" />
+            <StatCard label="Lifetime" value="…" sub="Loading live Whop data" icon={InfinityIcon} tone="violet" />
+          </>
+        ) : whop.status === 'error' ? (
+          <>
+            <StatCard label="Today" value="—" sub="Couldn't reach Whop API" icon={DollarSign} tone="red" />
+            <StatCard label="Last 7 days" value="—" sub="Couldn't reach Whop API" icon={CalendarDays} tone="red" />
+            <StatCard label="Last 30 days" value="—" sub="Couldn't reach Whop API" icon={TrendingUp} tone="red" />
+            <StatCard label="Lifetime" value="—" sub="Couldn't reach Whop API" icon={InfinityIcon} tone="red" />
+          </>
+        ) : (
+          <>
+            <StatCard label="Today" value={money(whop.totals.today)} sub={whop.errors.length ? `Couldn't reach ${whop.errors.join(', ')}` : undefined} icon={DollarSign} tone="emerald" delta={pctChange(whop.totals.today, whop.totals.yesterday)} deltaLabel="vs yesterday" spark={whopSpark.slice(-14)} />
+            <StatCard label="Last 7 days" value={money(whop.totals.week)} icon={CalendarDays} tone="sky" delta={pctChange(whop.totals.week, whop.totals.prevWeek)} deltaLabel="vs prior 7d" spark={whopSpark.slice(-7)} />
+            <StatCard label="Last 30 days" value={money(whop.totals.d30)} icon={TrendingUp} tone="brand" delta={pctChange(whop.totals.d30, whop.totals.prevD30)} deltaLabel="vs prior 30d" spark={whopSpark} />
+            <StatCard
+              label="Lifetime"
+              value={whopLifetime.status === 'ready' || whopLifetime.status === 'refreshing' ? money(whopLifetime.amount) : whopLifetime.status === 'error' ? '—' : '…'}
+              icon={InfinityIcon}
+              tone="violet"
+              sub={whopLifetime.status === 'error' ? "Couldn't reach Whop API" : 'Live, all-time net of refunds'}
+            />
+          </>
+        )}
       </div>
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
-        <StatCard label="Avg monthly spend per paying client" value={money(avgMonthly)} sub={`Previous estimate: $500–$1,000 · based on ${payingClients.length} clients with spend in the last 30 days`} icon={Users} tone="amber" />
-        <StatCard label="High-value clients" value={spend.clients.filter(highValue).length} sub={`30-day spend ≥ ${money(settings.highValueMonthly)}`} icon={Crown} tone="violet" />
-        <StatCard label="Setup fees collected" value={money(spend.totals.setupFees)} sub="Tracked separately — not revenue" icon={Receipt} tone="sky" />
+        {whop.status === 'ready' || whop.status === 'refreshing' ? (
+          <>
+            <StatCard label="Avg monthly spend per paying customer" value={money(whopAvgMonthly)} sub={`Live · based on ${whopPayingCustomers} Whop customer${whopPayingCustomers === 1 ? '' : 's'} with spend in the last 30 days`} icon={Users} tone="amber" />
+            <StatCard label="High-value customers" value={whopHighValueCount} sub={`30-day spend ≥ ${money(settings.highValueMonthly)}`} icon={Crown} tone="violet" />
+          </>
+        ) : (
+          <>
+            <StatCard label="Avg monthly spend per paying customer" value={whop.status === 'error' ? '—' : '…'} sub={whop.status === 'error' ? "Couldn't reach Whop API" : 'Loading live Whop data'} icon={Users} tone="amber" />
+            <StatCard label="High-value customers" value={whop.status === 'error' ? '—' : '…'} sub={`30-day spend ≥ ${money(settings.highValueMonthly)}`} icon={Crown} tone="violet" />
+          </>
+        )}
+        <StatCard label="Setup fees collected" value={money(spend.totals.setupFees)} sub="Tracked separately in the CRM — Whop has no equivalent field" icon={Receipt} tone="sky" />
       </div>
 
       {payments.length === 0 ? (

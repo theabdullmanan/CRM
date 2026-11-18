@@ -9,7 +9,8 @@ import { db } from '../lib/firebase';
 import { previewDb } from '../lib/preview';
 import { useAuth } from '../contexts/AuthContext';
 import { useCollection } from '../hooks/useFirestore';
-import { useClients, usePayments, useTasks, useZipSubmissions } from '../hooks/useData';
+import { useClients, usePayments, useTasks, useWhopAccounts, useZipSubmissions } from '../hooks/useData';
+import { useWhopSpend } from '../hooks/useWhopSpend';
 import { computeSpend, dailySeries, pctChange, withChange } from '../lib/spend';
 import { ROLES, TASK_PRIORITY } from '../lib/constants';
 import { cn, fmtDateTime, fromNow, money, toDate } from '../lib/utils';
@@ -64,6 +65,10 @@ export default function Dashboard() {
   );
 
   const agency = useAgency();
+  const { data: whopAccounts } = useWhopAccounts();
+  const activeWhopAccounts = useMemo(() => whopAccounts.filter((a) => a.active !== false), [whopAccounts]);
+  const whop = useWhopSpend(activeWhopAccounts);
+  const whopSpark = useMemo(() => dailySeries(whop.byDay, 30).map((d) => d.spend), [whop.byDay]);
   const spend = useMemo(() => computeSpend(payments), [payments]);
   // Payment entries carry amounts, so they're only shown to roles that can see revenue (admins).
   const feed = activity.filter((a) => can('revenue') || !String(a.action).startsWith('payment.'));
@@ -77,8 +82,20 @@ export default function Dashboard() {
 
   const tiles = [];
   if (can('revenue')) {
-    tiles.push(<StatCard key="today" label="Spend today" value={money(t.today)} icon={DollarSign} tone="emerald" delta={pctChange(t.today, t.yesterday)} deltaLabel="vs yesterday" spark={spark.slice(-14)} onClick={() => navigate('/revenue')} />);
-    tiles.push(<StatCard key="d30" label="Last 30 days" value={money(t.d30)} icon={TrendingUp} tone="brand" delta={pctChange(t.d30, t.prevD30)} deltaLabel="vs prior 30d" spark={spark} onClick={() => navigate('/revenue')} />);
+    if (whop.status === 'empty') {
+      tiles.push(<StatCard key="today" label="Spend today" value="$0" sub="Connect Whop accounts in Settings" icon={DollarSign} tone="emerald" onClick={() => navigate('/settings')} />);
+      tiles.push(<StatCard key="d30" label="Last 30 days" value="$0" sub="Connect Whop accounts in Settings" icon={TrendingUp} tone="brand" onClick={() => navigate('/settings')} />);
+    } else if (whop.status === 'loading' || whop.status === 'idle') {
+      tiles.push(<StatCard key="today" label="Spend today" value="…" sub="Loading live Whop data" icon={DollarSign} tone="emerald" />);
+      tiles.push(<StatCard key="d30" label="Last 30 days" value="…" sub="Loading live Whop data" icon={TrendingUp} tone="brand" />);
+    } else if (whop.status === 'error') {
+      tiles.push(<StatCard key="today" label="Spend today" value="—" sub="Couldn't reach Whop API" icon={DollarSign} tone="red" onClick={() => navigate('/settings')} />);
+      tiles.push(<StatCard key="d30" label="Last 30 days" value="—" sub="Couldn't reach Whop API" icon={TrendingUp} tone="red" onClick={() => navigate('/settings')} />);
+    } else {
+      const partial = whop.errors.length ? `Couldn't reach ${whop.errors.join(', ')}` : undefined;
+      tiles.push(<StatCard key="today" label="Spend today" value={money(whop.totals.today)} sub={partial} icon={DollarSign} tone="emerald" delta={pctChange(whop.totals.today, whop.totals.yesterday)} deltaLabel="vs yesterday" spark={whopSpark.slice(-14)} onClick={() => navigate('/revenue')} />);
+      tiles.push(<StatCard key="d30" label="Last 30 days" value={money(whop.totals.d30)} sub={partial} icon={TrendingUp} tone="brand" delta={pctChange(whop.totals.d30, whop.totals.prevD30)} deltaLabel="vs prior 30d" spark={whopSpark} onClick={() => navigate('/revenue')} />);
+    }
   }
   if (can('zipSubmit')) {
     tiles.push(<StatCard key="flag" label="My flagged zips" value={mySubs.filter((s) => s.status === 'flagged').length} sub="Inside cooldown" icon={AlertTriangle} tone="red" onClick={() => navigate('/zip-codes?tab=flagged')} />);

@@ -58,6 +58,14 @@ export function usePayments(clientId) {
   }, [clientId, allowed], () => (allowed ? P.payments.filter((p) => !clientId || p.clientId === clientId) : []));
 }
 
+/** Whop API keys used to pull live payment totals into the dashboard. Admin-only, like `payments`. */
+export function useWhopAccounts() {
+  const { can } = useAuth();
+  const allowed = can('revenue');
+  const res = useCollection(() => (allowed ? collection(db, 'whopAccounts') : null), [allowed], () => []);
+  return { ...res, data: [...res.data].sort((a, b) => (a.label || '').localeCompare(b.label || '')) };
+}
+
 export function useZipSubmissions(filter) {
   // filter: { field, op, value }; undefined = all submissions; null = don't subscribe
   const key = filter ? `${filter.field}${filter.op}${JSON.stringify(filter.value)}` : String(filter);

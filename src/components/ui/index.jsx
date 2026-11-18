@@ -289,6 +289,11 @@ const TONES = {
  */
 export function StatCard({ label, value, sub, icon: Icon, tone = 'brand', onClick, delta, deltaLabel, spark, children }) {
   const t = TONES[tone] || TONES.brand;
+  // Long dollar figures (e.g. $122,378) shrink to fit instead of being cut off with "…",
+  // and the sparkline steps aside once there's no room left to show the full number.
+  const len = String(value ?? '').length;
+  const fontSize = len > 11 ? 'text-[17px]' : len > 8 ? 'text-[22px]' : 'text-[30px]';
+  const showSpark = spark && spark.length > 1 && len <= 8;
   return (
     <Card interactive={Boolean(onClick)} className="group relative overflow-hidden p-5 hover:shadow-lift" onClick={onClick}>
       <span className={cn('pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full opacity-[0.08] blur-2xl transition-opacity duration-300 group-hover:opacity-[0.16]', t.glow)} />
@@ -301,10 +306,10 @@ export function StatCard({ label, value, sub, icon: Icon, tone = 'brand', onClic
         )}
       </div>
       <div className="relative mt-2 flex items-end justify-between gap-3">
-        <p className="truncate font-display text-[30px] font-bold leading-none tracking-tight text-slate-900 tabular-nums">
+        <p className={cn('whitespace-nowrap font-display font-bold leading-none tracking-tight text-slate-900 tabular-nums', fontSize)} title={String(value ?? '')}>
           <AnimatedNumber value={value} />
         </p>
-        {spark && spark.length > 1 && <MiniSpark data={spark} />}
+        {showSpark && <MiniSpark data={spark} />}
       </div>
       {(delta !== undefined || sub) && (
         <div className="relative mt-3 flex items-center gap-2 text-xs text-slate-500">

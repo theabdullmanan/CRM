@@ -1,23 +1,30 @@
 import { useEffect, useState } from 'react';
-import { addDoc, collection, deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
-import { Save, Plus, Trash2, Building2, Sparkles, Timer, DollarSign, Map } from 'lucide-react';
+import { Save, Plus, Trash2, Building2, Sparkles, Timer, DollarSign, Map, CreditCard, Eye, EyeOff, Pause, Play } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { useDepartments } from '../hooks/useData';
+import { useDepartments, useWhopAccounts } from '../hooks/useData';
 import { COOLDOWN_SCOPES } from '../lib/constants';
 import { friendlyError } from '../lib/utils';
 import { seedDemoData } from '../services/seedService';
 import { Button, Card, CardHeader, Field, Input, PageHeader, Select, useConfirm } from '../components/ui';
 
+const maskKey = (k) => (k && k.length > 10 ? `${k.slice(0, 6)}••••••••${k.slice(-4)}` : '••••••••');
+
 export default function Settings() {
   const { settings, profile } = useAuth();
   const confirm = useConfirm();
   const { data: departments } = useDepartments();
+  const { data: whopAccounts } = useWhopAccounts();
   const [form, setForm] = useState(settings);
   const [busy, setBusy] = useState(false);
   const [dept, setDept] = useState('');
   const [seeding, setSeeding] = useState(false);
+  const [whopLabel, setWhopLabel] = useState('');
+  const [whopKey, setWhopKey] = useState('');
+  const [addingWhop, setAddingWhop] = useState(false);
+  const [revealed, setRevealed] = useState({});
 
   useEffect(() => setForm(settings), [settings]);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -46,6 +53,26 @@ export default function Settings() {
     if (departments.some((d) => d.name.toLowerCase() === dept.trim().toLowerCase())) return toast.error('Department already exists');
     await addDoc(collection(db, 'departments'), { name: dept.trim(), createdAt: serverTimestamp() });
     setDept('');
+  };
+
+  const addWhopAccount = async (e) => {
+    e.preventDefault();
+    if (!whopLabel.trim() || !whopKey.trim()) return;
+    setAddingWhop(true);
+    try {
+      await addDoc(collection(db, 'whopAccounts'), {
+        label: whopLabel.trim(), apiKey: whopKey.trim(), active: true, createdAt: serverTimestamp(), createdBy: profile.name,
+      });
+      setWhopLabel(''); setWhopKey('');
+      toast.success('Whop account connected');
+    } catch (e) { toast.error(friendlyError(e)); } finally { setAddingWhop(false); }
+  };
+
+  const toggleWhopAccount = (acct) => updateDoc(doc(db, 'whopAccounts', acct.id), { active: acct.active === false });
+
+  const deleteWhopAccount = async (acct) => {
+    if (!(await confirm({ title: 'Remove this Whop account?', message: `"${acct.label}" will stop contributing to the Spend dashboard. This doesn't affect anything in Whop.`, confirmLabel: 'Remove' }))) return;
+    await deleteDoc(doc(db, 'whopAccounts', acct.id));
   };
 
   const seed = async () => {
@@ -84,6 +111,40 @@ export default function Settings() {
             <Field label="High-value threshold ($ / 30 days)"><Input type="number" value={form.highValueMonthly} onChange={set('highValueMonthly')} /></Field>
             <Field label="Daily rate — minimum ($)"><Input type="number" value={form.dailyMin} onChange={set('dailyMin')} /></Field>
             <Field label="Daily rate — maximum ($)"><Input type="number" value={form.dailyMax} onChange={set('dailyMax')} /></Field>
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader title={<span className="flex items-center gap-2"><CreditCard className="h-4 w-4 text-brand-600" />Whop payment accounts</span>} subtitle="Powers the Spend today / Last 30 days cards on the dashboard with live Whop data." />
+          <div className="p-5">
+            <form onSubmit={addWhopAccount} className="mb-4 flex flex-wrap gap-2">
+              <Input className="sm:w-48" placeholder="Label, e.g. Whitestone Media LLC" value={whopLabel} onChange={(e) => setWhopLabel(e.target.value)} />
+              <Input className="flex-1" type="password" autoComplete="off" placeholder="apik_…" value={whopKey} onChange={(e) => setWhopKey(e.target.value)} />
+              <Button type="submit" icon={Plus} loading={addingWhop}>Connect</Button>
+            </form>
+            {whopAccounts.length === 0 ? (
+              <p className="text-sm text-slate-400">No Whop accounts connected yet.</p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {whopAccounts.map((a) => (
+                  <li key={a.id} className="flex items-center gap-3 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-medium text-slate-900">{a.label}{a.active === false && <span className="ml-2 text-xs font-normal text-slate-400">paused</span>}</p>
+                      <p className="font-mono text-[11.5px] text-slate-500">{revealed[a.id] ? a.apiKey : maskKey(a.apiKey)}</p>
+                    </div>
+                    <button type="button" onClick={() => setRevealed((r) => ({ ...r, [a.id]: !r[a.id] }))} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" title={revealed[a.id] ? 'Hide key' : 'Show key'}>
+                      {revealed[a.id] ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    </button>
+                    <button type="button" onClick={() => toggleWhopAccount(a)} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" title={a.active === false ? 'Resume' : 'Pause'}>
+                      {a.active === false ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+                    </button>
+                    <button type="button" onClick={() => deleteWhopAccount(a)} className="rounded-full p-1.5 text-slate-400 hover:bg-down-100 hover:text-down-600" title="Remove">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </Card>
 
